@@ -3,8 +3,11 @@
 #You will stay in the same directory but it will not retain cmdhistory or anything like that
 #
 #Optional params:
-#	-ps -ps32 -ps64 and -cmd
-#		Default is -ps64. If multiple are passed the default is used.
+#	-Cmd
+#		Specifies using cmd.exe instead of powershell
+#
+#	-Use32
+#		Specifies using 32bit equivalents of the shell
 #
 #	-NoExit 
 #		Keeps the current console window open.
