@@ -240,7 +240,7 @@ if($FromLift)
 if(IsRunningElevated)
 {
 	Write-Output "lift: already elevated"
-	if ($UserRequestedCommand -ne "")
+	if ($UserRequestedCommand -ne "" -and $UserRequestedCommand -ne "& ")
 		{Invoke-Expression $UserRequestedCommand}
 		
 	break
