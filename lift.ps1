@@ -5,6 +5,8 @@
 .DESCRIPTION
 	Typing "lift" will cause a UAC prompt but it will create a new window.
 	You will stay in the same directory but it will not retain cmdhistory or anything like that.
+	Extensive effort has gone into making this the best experience possible. Window stays in the same location, 
+	it's got a semi-decent animation, the syntax is easy, it can run from powershell and cmd. 
 
 .PARAMETER Cmd
     Specifies using cmd.exe instead of powershell.
@@ -22,19 +24,16 @@
     For internal use only. Specifies that this script was launched from the newly elevated console. You shouldn't set this.
 
 .NOTES
-	http://ambracode.com/index/show/182422
 	
 	TODO: implement "fall" which is the opposite
 	TODO: launch source app with same commandline params but elevated
 	TODO: PS: preserve command history (is this necessary?)
 	TODO: PS: preserve previously onscreen text
 	TODO: PS: preserve all objects and functions
-	TODO: preserve the environment and environmentvariables
-	
-	TODO: Change powershell font	
+	TODO: preserve the process environment and environmentvariables
 #>
 
-[cmdletbinding()] 
+[CmdletBinding()] 
 Param
 (
 	[switch]$Cmd = $false,
