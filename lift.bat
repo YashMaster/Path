@@ -5,12 +5,17 @@ REM No need to do nuthin' if we're already elevated.
 NET FILE 1>NUL 2>NUL
 if '%errorlevel%' == '0' ( goto Elevated )
 
-echo Elevating...
-REM %SystemRoot%\SysWOW64\WindowsPowerShell\v1.0\powershell.exe -NoProfile -ExecutionPolicy Unrestricted -Command "cd %~dp0; .\%~n0.ps1 %*"
-REM %SystemRoot%\SysWOW64\WindowsPowerShell\v1.0\powershell.exe -NoProfile -ExecutionPolicy Unrestricted -Command "%~dp0\%~n0.ps1 '%*'"
-echo %~n0.ps1 -FromBat %*
-%SystemRoot%\SysWOW64\WindowsPowerShell\v1.0\powershell.exe -NoProfile -ExecutionPolicy Unrestricted -Command "%~dp0\%~n0.ps1 -FromBat %*"
+REM Replace double quotes with single quotes in the args
+set command=%*
+set command=%command:"='%
 
+REM Wrap in double quotes and include the script invocation. 
+REM Note: The whitespace at the end is intentional! It enables parsing commands that end in '\' e.g. "lift cd .\Desktop\"
+set command="%~dp0\%~n0.ps1 -FromBat %command% "
+set command=%command:\\=\%
+
+REM Actually invoke PowerShell as an elevated user
+%SystemRoot%\SysWOW64\WindowsPowerShell\v1.0\powershell.exe -NoProfile -ExecutionPolicy Unrestricted -Command %command%
 exit /b
 
 :Elevated

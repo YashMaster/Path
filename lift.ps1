@@ -22,22 +22,19 @@
     For internal use only. Specifies that this script was launched from the newly elevated console. You shouldn't set this.
 
 .NOTES
-	TODO: Run the command anyway, even if it's already elevated. Make sure you don't kill the parent then!
-	TODO: Handle when users _DO NOT_ accept the UAC prompt. 
+	http://ambracode.com/index/show/182422
+	
 	TODO: implement "fall" which is the opposite
-	TODO: if already elevated, "lift X.exe" should still execute X.exe
-	TODO: make sure it closes the source prompt if launched from cmd.exe
-	TODO: remove the maximize animation 
 	TODO: launch source app with same commandline params but elevated
 	TODO: PS: preserve command history (is this necessary?)
 	TODO: PS: preserve previously onscreen text
 	TODO: PS: preserve all objects and functions
 	TODO: preserve the environment and environmentvariables
 	
-	http://ambracode.com/index/show/182422
+	TODO: Change powershell font	
 #>
 
- 
+[cmdletbinding()] 
 Param
 (
 	[switch]$Cmd = $false,
@@ -45,7 +42,8 @@ Param
 	[switch]$NoExit = $false,
 	[switch]$FromBat = $false,
 	[switch]$FromLift = $false,
-	$SourceHwnd
+	$SourceHwnd,
+	[Parameter(Position=0, ValueFromRemainingArguments=$true)]$args
 )  
 
 #All the Win32 functions you could ever desire
@@ -63,6 +61,17 @@ Add-Type @"
 	 
 	public class Win32 
 	{
+		public const UInt32 WM_DESTROY = 0x0002;
+		public const UInt32 WM_CLOSE = 0x0010;
+		
+		public const UInt32 SW_HIDE = 0;
+		public const UInt32 SW_SHOWNOACTIVATE = 4;
+		public const UInt32 SW_SHOWNA = 8;
+		public const UInt32 SW_RESTORE = 9;
+		
+		[DllImport("user32.dll")]
+		public static extern IntPtr SendMessage(IntPtr hWnd, UInt32 Msg, Int32 wParam, Int32 lParam);
+	
 		[DllImport("user32.dll")]
 		[return: MarshalAs(UnmanagedType.Bool)]
 		public static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
@@ -107,22 +116,47 @@ Function Get-ConsolePath($Cmd, $Use32)
 	$ret
 }
 
-Function Get-CommandToRun($passedArgs)
+Function Get-UserRequestedCommand($passedArgs)
 {  	
-	[string]$toRun = ""
+	$ret = "& "
 	foreach ($arg in $passedArgs)  
-		{$toRun += " " + $arg} #Note the whitespace! Keep it there or you will be sad!
-	
-	$ret = ""
-	$ret += "cd " + (Resolve-Path .\).Path + ";"
+		{$ret += "'$arg' "} #Note the whitespace! Keep it there or you will be sad!
+	#$ret.TrimEnd(" ") Note: Leave the last space there! It helps prevent weird parsing bugs when the last command ends in '\'
+	$ret
+}
 
-	if($toRun.Length -ge 1)
+Function Get-UserRequestedCommandReadable($passedArgs)
+{  	
+	$ret = ""
+	foreach ($arg in $passedArgs)  
+		{$ret += "$arg "}
+	$ret
+}
+
+#This the set of commands that need to be run in the target elevated PowerShell _before_ the command the user passed. 
+#This does things like position the window properly, set the proper working directory, etc...
+Function Get-CommandToRun($passedArgs)
+{
+	$ret = ""
+
+	$SourceHwnd = [Win32]::GetConsoleWindow()
+	
+	#Runs this script again with the FromLift param set to true. Also propagates the @NoExit value
+	if($PSCmdlet.MyInvocation.BoundParameters["Verbose"].IsPresent)
+		{$ret += "lift -FromLift -SourceHwnd $SourceHwnd -NoExit -Verbose;"}
+	else
+		{$ret += "lift -FromLift -SourceHwnd $SourceHwnd -NoExit:`$$NoExit;"}
+	
+	#Set the current directory accordingly
+	$ret += "cd '" + (Resolve-Path .\).Path + "';"
+	
+	#If there's a @userRequested command, include commands to write those to the console and execute them
+	if($passedArgs.Length -ge 1)
 	{
 		#I have no idea why, but "write-output" really messes things up here...
 		#And "echo" causes it to return all the info on different lines... Write-Host it is!
-		#Write-Host "torun: " $toRun
-		$ret += "Write-Host ""$($toRun)"";"
-		$ret += "$($toRun);"
+		$ret += "Write-Host """ + (Get-UserRequestedCommandReadable $passedArgs) + """;"	#Shows which command the user wanted to run
+		$ret += """" + (Get-UserRequestedCommand $passedArgs) + """;" 						#Actually runs the userCommand
 	}
 	
 	$ret
@@ -130,52 +164,76 @@ Function Get-CommandToRun($passedArgs)
 
 Function Print-Args($passedArgs)
 {
-	Write-Output "Cmd:		$($Cmd)"
-	Write-Output "Use32:		$($Use32)"
-	Write-Output "NoExit:		$($NoExit)"
-	Write-Output "FromBat:	$($FromBat)"
-	Write-Output "FromLift:	$($FromLift)"
-	Write-Output "SourceHwnd:	$($SourceHwnd)"
+	Write-Verbose "Cmd:		$($Cmd)"
+	Write-Verbose "Use32:		$($Use32)"
+	Write-Verbose "NoExit:		$($NoExit)"
+	Write-Verbose "FromBat:	$($FromBat)"
+	Write-Verbose "FromLift:	$($FromLift)"
+	Write-Verbose "SourceHwnd:	$($SourceHwnd)"
 	
 	$i = 0
-	Write-Output "PassedArgs:"
+	Write-Verbose "PassedArgs:"
 	foreach ($arg in $passedArgs)  
 	{
-		Write-Output "`t[$i]:		$($arg)"
+		Write-Verbose "`t[$i]:`t$($arg)"
 		$i++
 	}	
 	
-	Write-Output "ConsolePath:	$($ConsolePath)"
-	Write-Output "Command:	$($Command)"
+	Write-Verbose "ConsolePath:	$($ConsolePath)"
+	Write-Verbose "UserRequestedCommand:	$($UserRequestedCommand)"
+	Write-Verbose "Command:	$($Command)"
 	$commandLine = (Get-WmiObject Win32_Process | where ProcessID -eq $pid).CommandLine
-	Write-Output "CurrentProc CmdLine: $commandLine" 
+	Write-Verbose "CurrentProc CmdLine: $commandLine" 
 	
+	#$ParentPid = (gwmi win32_process -Filter "processid='$pid'").parentprocessid; 
+	#$ParentProc = [System.Diagnostics.Process]::GetProcessById($ParentPid)
+	#Write-Verbose "parent: $($ParentPid)"
+	#Write-Verbose "parentProc: $($ParentProc)"
 }
 
 Function IsRunningElevated()
 {
 	$identity = [Security.Principal.WindowsIdentity]::GetCurrent()
-	$principal = new-object Security.Principal.WindowsPrincipal $identity
+	$principal = New-Object Security.Principal.WindowsPrincipal $identity
 	$principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)  
 }
 
 
 
-#====================================================================================================
+
+
+#====================================================================================================	
 $ConsolePath = Get-ConsolePath $Cmd $Use32
+$UserRequestedCommand = Get-UserRequestedCommand $args
 $Command = Get-CommandToRun $args
 
+Write-Verbose "Invocation: $($MyInvocation.Line)"
 Print-Args $args
 
 #If we were launched _from_ the lift script (i.e. just elevated) then initalize state
 if($FromLift)
 {
-	$targetHwnd = [Win32]::GetConsoleWindow()
+	$ret = [Win32]::SetForegroundWindow($SourceHwnd)
+	
 	$sourceRect = New-Object Rect
 	$ret = [Win32]::GetWindowRect($SourceHwnd, [ref]$sourceRect)
+	$targetHwnd = [Win32]::GetConsoleWindow()
+	
+	#MoveWindow can't be called while th window is hidden or minimized. 
+	$ret = [Win32]::ShowWindow($targetHwnd, [Win32]::SW_RESTORE)
 	$ret = [Win32]::MoveWindow($targetHwnd, [ref]$sourceRect)
-	$ret = [Win32]::ShowWindow($targetHwnd, 9) #SW_RESTORE
-	$ret = [Win32]::MoveWindow($targetHwnd, [ref]$sourceRect)
+	
+	#The following two lines eliminate the "restore" animation
+	$ret = [Win32]::ShowWindow($targetHwnd, [Win32]::SW_HIDE)
+	$ret = [Win32]::ShowWindow($targetHwnd, [Win32]::SW_SHOWNOACTIVATE)
+	
+	#Kill the source window 
+	if(-not $NoExit)
+	{
+		$ret = [Win32]::SetForegroundWindow($SourceHwnd)
+		$ret = [Win32]::SendMessage($SourceHwnd, [Win32]::WM_CLOSE	, 0, 0)
+	}
+
 	return
 }
 
@@ -183,55 +241,35 @@ if($FromLift)
 if(IsRunningElevated)
 {
 	Write-Output "lift: already elevated"
+	if ($UserRequestedCommand -ne "")
+		{Invoke-Expression $UserRequestedCommand}
+		
 	break
 }
 
-
-
-##Start application
-$SourceHwnd = [Win32]::GetConsoleWindow()
-$process = New-Object System.Diagnostics.Process
-$process.StartInfo = (Get-Process -Id $pid).StartInfo
-#$process.StartInfo.UseShellExecute = 0
-#$process.StartInfo.Environment = (Get-Process -Id $pid).StartInfo.Environment
-#$process.StartInfo.EnvironmentVariables.Clear()
-#foreach($var in (Get-Process -Id $pid).StartInfo.EnvironmentVariables)
-#	{$process.StartInfo.EnvironmentVariables.Add($var.Name, $var.Value)}
-
-$process.StartInfo.FileName = $ConsolePath
-$process.StartInfo.Arguments = "-NoProfile -NoExit -ExecutionPolicy Unrestricted -Command """ + "lift -FromLift -SourceHwnd $SourceHwnd; " + $Command + """"
-$process.StartInfo.WorkingDirectory = (Resolve-Path .\).Path #This doesn't actually set powershell's starting location. this is the _process'_ working dir
-$process.StartInfo.WindowStyle = 2 #Start minimized
-$process.StartInfo.Verb = "runas"
-$process.Start() | Out-Null
-
-$process.StartInfo
-
-#If we don't need to cleanup the parent conhost, then we're done here!
-if($NoExit)
-	{break}
-
-	
-#Kill the old PS window...If we were run from cmd.exe, we have to explicitly kill it; calling "exit" just exits this ps1 script
-$ParentPid = (gwmi win32_process -Filter "processid='$pid'").parentprocessid; 
-$ParentProc = [System.Diagnostics.Process]::GetProcessById($ParentPid)
-Write-Verbose "parent: $($ParentPid)"
-Write-Verbose "parentProc: $($ParentProc)"
-
-#Wait until the foreground window changes...
-$ret = [Win32]::SetForegroundWindow($SourceHwnd)
-Sleep 2
-for($i=0; $i -lt 100; $i++)
+#Start application
+try
 {
-	$fgw = [Win32]::GetForegroundWindow()
-	#$fgw
-	#$process.MainWindowHandle
-	if([Win32]::GetForegroundWindow() -eq $process.MainWindowHandle)
-	{
-		#Stop-Process $ParentPid
-		$host.SetShouldExit(0)
-		exit
-	}
-	Start-Sleep -m 100
+	$process = New-Object System.Diagnostics.Process
+	$process.StartInfo = (Get-Process -Id $pid).StartInfo
+	$process.StartInfo.FileName = $ConsolePath
+	$process.StartInfo.Arguments = "-NoExit -ExecutionPolicy Unrestricted -Command """ + $Command + """"
+	$process.StartInfo.WindowStyle = 2 #Start minimized
+	$process.StartInfo.Verb = "runas"
+	$process.Start() | Out-Null
 }
-Write-Host "lift: the elevated shell is taking unusually long to launch..."
+catch [System.Exception]
+{
+	Write-Output "lift: UAC prompt was not accepted."	
+	return
+}
+Write-Output "lift: elevating..."
+Sleep 1
+
+#Exit the new powershell console we created... if we created one from the bat
+if($FromBat)
+	{$host.SetShouldExit(0)}
+
+
+
+
