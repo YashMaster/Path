@@ -6,10 +6,10 @@
 	Typing "lift" will cause a UAC prompt but it will create a new window.
 	You will stay in the same directory but it will not retain cmdhistory or anything like that.
 	Extensive effort has gone into making this the best experience possible. Window stays in the same location, 
-	it's got a semi-decent animation, the syntax is easy, it can run from powershell and cmd. 
+	it's got a semi-decent animation, the syntax is easy, it can run from PowerShell and cmd. 
 
 .PARAMETER Cmd
-    Specifies using cmd.exe instead of powershell.
+    Specifies using cmd.exe instead of PowerShell.
 
 .PARAMETER Use32
     Specifies using 32bit equivalents of the shell.
@@ -23,6 +23,15 @@
 .PARAMETER FromLift
     For internal use only. Specifies that this script was launched from the newly elevated console. You shouldn't set this.
 
+.PARAMETER Verbose
+    Includes debug info. Note that when -Verbose is specified -NoExit:$true is also specified. Whether you like it or not :) 
+
+.EXAMPLE
+	lift 
+	lift -NoExit 
+	lift -Verbose 
+	lift -Use32 ls .\Desktop
+
 .NOTES
 	
 	TODO: implement "fall" which is the opposite
@@ -31,6 +40,12 @@
 	TODO: PS: preserve previously onscreen text
 	TODO: PS: preserve all objects and functions
 	TODO: preserve the process environment and environmentvariables
+	
+	TODO: BUG: FIXED: doesn't work with strictmode "Set-StrictMode -Version Latest"
+	TODO: BUG: FIXED: doesn't work if not in your path
+	
+	TODO: add lift -RunOnce
+	TODO: add timing statements for verbose output. 
 #>
 
 [CmdletBinding()] 
@@ -42,8 +57,10 @@ Param
 	[switch]$FromBat = $false,
 	[switch]$FromLift = $false,
 	$SourceHwnd,
-	[Parameter(Position=0, ValueFromRemainingArguments=$true)]$args
+	[Parameter(Position=0, ValueFromRemainingArguments=$true)]$args=$null
 )  
+
+Set-StrictMode -Version Latest
 
 #All the Win32 functions you could ever desire
 Add-Type @"
@@ -140,17 +157,18 @@ Function Get-CommandToRun($passedArgs)
 
 	$SourceHwnd = [Win32]::GetConsoleWindow()
 	
-	#Runs this script again with the FromLift param set to true. Also propagates the @NoExit value
-	if($PSCmdlet.MyInvocation.BoundParameters["Verbose"].IsPresent)
-		{$ret += "lift -FromLift -SourceHwnd $SourceHwnd -NoExit -Verbose;"}
+	#Runs this script again with the FromLift param set to true. Also propagates the verbosity and @NoExit switch
+	#if($PSCmdlet.MyInvocation.BoundParameters["Verbose"].IsPresent)
+	if($PSCmdlet.MyInvocation.BoundParameters["Verbose"])
+		{$ret += "& '$PSCommandPath' -FromLift -SourceHwnd $SourceHwnd -NoExit -Verbose;"}
 	else
-		{$ret += "lift -FromLift -SourceHwnd $SourceHwnd -NoExit:`$$NoExit;"}
+		{$ret += "& '$PSCommandPath' -FromLift -SourceHwnd $SourceHwnd -NoExit:`$$NoExit;"}
 	
 	#Set the current directory accordingly
 	$ret += "cd '" + (Resolve-Path .\).Path + "';"
 	
 	#If there's a @userRequested command, include commands to write those to the console and execute them
-	if($passedArgs.Length -ge 1)
+	if($passedArgs -ne $null -and $passedArgs.Length -ge 1)
 	{
 		#I have no idea why, but "write-output" really messes things up here...
 		#And "echo" causes it to return all the info on different lines... Write-Host it is!
@@ -201,7 +219,7 @@ Function IsRunningElevated()
 
 
 
-#====================================================================================================	
+#====================================================================================================
 $ConsolePath = Get-ConsolePath $Cmd $Use32
 $UserRequestedCommand = Get-UserRequestedCommand $args
 $Command = Get-CommandToRun $args

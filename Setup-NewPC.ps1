@@ -167,6 +167,8 @@ else
 	{"they aint equal!"}
 
 Write-Host "Done! Your computer is now awesome." -ForegroundColor Green
+Write-Host "You should definitely restart now!" -ForegroundColor Green
+Write-Host "You should definitely restart now!" -ForegroundColor Green
 
 
 

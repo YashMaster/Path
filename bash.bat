@@ -1,3 +1,3 @@
 @echo off
-START /B %localappdata%\Programs\Git\git-bash.exe 
-REM --cd-to-home
+START "" "%localappdata%\Programs\Git\git-bash.exe"
+REM START "" "%localappdata%\Programs\Git\git-bash.exe" --cd-to-home
