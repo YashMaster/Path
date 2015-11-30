@@ -1,15 +1,34 @@
 #This is designed to help you setup a new PC
 #This assumes you are Yashar and you prefer the best settings on your PC
 #All else, don't use this script, or be sad
-#Set-PSDebug -Trace 1
 #
 #TODO:
-##Set sleep to never if desktop. 
-##Copy shortcuts to desktop
+#	#Set sleep to never if desktop
+#	#Copy shortcuts to desktop
+#	#Add %OneDrive% env var 
+#	#Add Scoop installation
+#	#Add PS configurations
+#Done:
+#	#Remove all pauses
+#	#Make this a cmdlet
+#	#Add font installation
 
+
+
+
+[CmdletBinding()]
+Param 
+(
+	[string]$OneDrive 	= (Get-ItemProperty -Path 'HKCU:\Software\Microsoft\OneDrive\' -Name UserFolder).UserFolder,
+	[string]$Apps	 	= "$OneDrive\Apps",
+	[string]$Path 		= "$OneDrive\Path",
+	[string]$Fonts 		= "$OneDrive\Apps\Fonts"
+)
+$workingdir = Split-Path $MyInvocation.MyCommand.Path -Parent
+. "$workingdir\Font.ps1"  
 
 #Checks if the current script is being run elevated 
-Function IsRunningElevated()
+Function Is-RunningElevated()
 {
 	$identity = [Security.Principal.WindowsIdentity]::GetCurrent()
 	$principal = New-Object Security.Principal.WindowsPrincipal $identity
@@ -19,7 +38,8 @@ Function IsRunningElevated()
 #Opens IE Tabs...Has a dumb bug where it will create a blank one. Whatever. 
 Function Open-IETabs
 {
-    param 
+	[CmdletBinding()]
+    Param 
 	(
         [string[]]$Url
     )
@@ -33,9 +53,9 @@ Function Open-IETabs
 	$Ie.Visible = $true
 }
 
-
+#Alternative method to [Environment]::SetEnvironmentVariable("Path", $env:Path + ";C:\Path", [EnvironmentVariableTarget]::Machine)
 Function Add-Path 
-{
+{	
 	[CmdletBinding()]
 	Param
 	( 
@@ -72,17 +92,33 @@ Function Get-Path() { return $env:Path }
 
 
 
+
+
 #Step -2: Set working dir
-Write-host "Getting OneDrive directory..." -ForeGroundColor Green
-$OneDrive = (Get-ItemProperty -Path 'HKCU:\Software\Microsoft\OneDrive\' -Name UserFolder).UserFolder
-cd "$OneDrive\Apps"
+Write-host "Setting the working directory: $Apps" -ForeGroundColor Green
+cd $Apps
+
+
+
+#Step -1.5: Copy over useful commands to C:\Path and add it to the %PATH%
+Write-Host "Adding to the %PATH%: $Path" -ForegroundColor Green
+Add-Path $Path
 
 
 
 #Step -1: Make sure the script is running Elevated
-if(!(IsRunningElevated))
+if(!(Is-RunningElevated))
 	{throw "Please relaunch with elevated privileges."}
 
+	
+#Install the fonts
+$allFonts = "$Fonts\*.ttf"
+Get-ChildItem $allFonts | ForEach-Object { Install-Font $_.FullName } 
+
+
+#Enable some in PowerShell
+Add-FontToPowerShell "000" "Monaco" $false
+Add-FontToPowerShell "0000" "Source Code Pro" $true
 
 
 #Step -0.75: Start installing a bunch-o-Ninite crap
@@ -153,19 +189,8 @@ copy ".\WindowsTweaks\AutoHotKey\SoundBrightness.exe" "$env:AppData\Microsoft\Wi
 & "$env:AppData\Microsoft\Windows\Start Menu\Programs\Startup\SoundBrightness.exe"
 
 
-#Step 4: Copy over useful commands to C:\Path and add it to the %PATH%
-Write-Host "Setting the environment variables..." -ForegroundColor Green
-#copy .\Path C:\ -Recurse -Force
-#Note these won't be usable until PowerShell is relaunched
-#[Environment]::SetEnvironmentVariable("Path", $env:Path + ";C:\Path", [EnvironmentVariableTarget]::Machine)
-$p1 = Get-Path
-Add-Path "$OneDrive\Path"
-$p2 = Get-Path
-if ($p1 -eq $p2)
-	{"they're equal!"}
-else
-	{"they aint equal!"}
 
+#Woot, you're done! 
 Write-Host "Done! Your computer is now awesome." -ForegroundColor Green
 Write-Host "You should definitely restart now!" -ForegroundColor Green
 Write-Host "You should definitely restart now!" -ForegroundColor Green

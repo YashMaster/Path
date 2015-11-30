@@ -41,9 +41,6 @@
 	TODO: PS: preserve all objects and functions
 	TODO: preserve the process environment and environmentvariables
 	
-	TODO: BUG: FIXED: doesn't work with strictmode "Set-StrictMode -Version Latest"
-	TODO: BUG: FIXED: doesn't work if not in your path
-	
 	TODO: add lift -RunOnce
 	TODO: add timing statements for verbose output. 
 #>
