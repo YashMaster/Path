@@ -34,7 +34,7 @@
 
 .NOTES
 	
-	TODO: implement "fall" which is the opposite
+	TODO: implement "fall" or "drop" which is the opposite
 	TODO: launch source app with same commandline params but elevated
 	TODO: PS: preserve command history (is this necessary?)
 	TODO: PS: preserve previously onscreen text

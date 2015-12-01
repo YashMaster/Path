@@ -100,7 +100,7 @@ cd $Apps
 
 
 
-#Step -1.5: Copy over useful commands to C:\Path and add it to the %PATH%
+#Step -1.5: Copy over useful commands to @Path and add it to the %PATH%
 Write-Host "Adding to the %PATH%: $Path" -ForegroundColor Green
 Add-Path $Path
 

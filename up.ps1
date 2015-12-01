@@ -15,18 +15,21 @@ function sudo_do($parent_pid, $dir, $cmd) {
 
 	$kernel = add-type $src -passthru
 
+		write-host "hi"
+	powershell -noprofile write-host 'i am a sibling to the third heat 1'
 	& powershell -noprofile write-host 'i am a sibling to the third heat 1'
-	write-host "freeing console in 5 seconds "
-	write-host "$cmd`nexit `$lastexitcode"
-	sleep 5
+	
+
+
+	Write-host "freeing console and sleeping for 5 seconds"
 	$kernel::freeconsole()
 	$kernel::attachconsole($parent_pid)
-
-	#sleep 5
+	sleep 5
+	
 	write-output "console has been re-attached "
 	write-output "command is still $cmd"
 	
-	& cmd.exe /c echo i-was-echo-d
+	& cmd.exe /c echo i-was-echo-d	
 	#sleep 5
 	& powershell -noprofile write-host 'i am a sibling to the third heat'
 
@@ -38,16 +41,13 @@ function sudo_do($parent_pid, $dir, $cmd) {
 	$p.start()
 	$p.waitforexit()
 
-	$p.start()
-	$p.waitforexit()
-
 	& powershell -noprofile write-host 'i am a sibling to the third heat'
 	& cmd.exe /c echo i-was-echo-d
 	write-output "i was output'd"
 	#write-host "i was hostwriten"
 	echo hihi
 	return $p.exitcode
-}
+} 
 
 function serialize($a, $escape) {
 	if($a -is [string] -and $a -match '\s') { return "'$a'" }
@@ -80,7 +80,18 @@ $start.verb = 'runas'
 #$start.windowstyle = 'hidden'
 try { $null = $p.start() }
 catch { exit 1 } # user didn't provide consent
-$p.waitforexit()
-$host.ui.rawui.windowtitle = $savetitle
+#$p.waitforexit()
 
-exit $p.exitcode
+
+
+
+
+
+
+
+
+
+
+#$host.ui.rawui.windowtitle = $savetitle
+
+#exit $p.exitcode
