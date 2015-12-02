@@ -55,22 +55,17 @@ public static class Pipes
     {
         String ret = "";
         using (var cancellationTokenSource = new CancellationTokenSource(timeout))
+        using(cancellationTokenSource.Token.Register(() => pipe.Disconnect()))
         {
-            using(cancellationTokenSource.Token.Register(() => pipe.Disconnect()))
+            int receivedCount;
+            try
             {
-                int receivedCount;
-                try
-                {
-                    var buffer = new byte[BuffSize];
-                    receivedCount = await pipe.ReadAsync(buffer, 0, BuffSize, cancellationTokenSource.Token);
-                    ret = System.Text.Encoding.Default.GetString(buffer);
-                    ret = ret.Substring(0, receivedCount);
-                }
-                catch (TimeoutException)
-                {
-                    receivedCount = -1;
-                }
+                var buffer = new byte[BuffSize];
+                receivedCount = await pipe.ReadAsync(buffer, 0, BuffSize, cancellationTokenSource.Token);
+                ret = System.Text.Encoding.Default.GetString(buffer);
+                ret = ret.Substring(0, receivedCount);
             }
+            catch (TimeoutException) {}
         }
         return ret;
     }
@@ -78,16 +73,28 @@ public static class Pipes
 "@
 if (-not ([System.Management.Automation.PSTypeName]'Pipes').Type) { Add-Type -TypeDefinition $Source -Language CSharp }
 
-if(!$args) { "usage: sudo <cmd...>"; exit 1 }
+if (!$args) { "usage: sudo <cmd...>"; exit 1 }
 
 function is_admin { return ([System.Security.Principal.WindowsIdentity]::GetCurrent().UserClaims | ? { $_.Value -eq 'S-1-5-32-544'}) }
-if(!(is_admin)) { [console]::error.writeline("sudo: you must be an administrator to run sudo"); exit 1 }
+if (!(is_admin)) { [console]::error.writeline("sudo: you must be an administrator to run sudo"); exit 1 }
 
+function write_obj($pipe, $obj) { 
+    $json = convertto-json $obj
+    $sw = new-object system.io.streamwriter($pipe);
+    $sw.writeline($json); 
+    $sw.flush();
+    $sw.dispose(); 
+}
 
+function read_obj($pipe, $timeout=3000) { 
+    $json = [Pipes]::ReadCmdAsync($pipe, $timeout).Result;
+    $obj = ConvertFrom-Json $json
+    $obj
+}
 
 #Returns a pipe. Closes a pipe if an open one is passed
 #Fun note: to list all pipes use: get-childitem "\\.\pipe\"
-function get_pipe($pipe){
+function get_pipe($pipe) {
     if($pipe -ne $null) { $pipe.Dispose(); } #Write-Host "pipe was not null: $pipe"
 
     $PipeSecurity = New-Object IO.Pipes.PipeSecurity
@@ -106,8 +113,8 @@ function sudo_do($parent_pid, $pipe_name, $dir) {
         [DllImport("kernel32.dll", SetLastError = true, ExactSpelling = true)]
         public static extern bool FreeConsole();
     }'
-    $kernel = add-type $src -passthru
     if (-not $DebugOn){
+        $kernel = add-type $src -passthru
         $kernel::freeconsole()
         $kernel::attachconsole($parent_pid)
     }
@@ -116,13 +123,11 @@ function sudo_do($parent_pid, $pipe_name, $dir) {
     while ($true) {
         $pipe = get_pipe $pipe
         $ret = [Pipes]::ListenForConnection($pipe);
-        if (-not $ret)
-            { continue }
+        if (-not $ret) { continue }
 
         $json = [Pipes]::ReadCmdAsync($pipe).Result;
         $obj = ConvertFrom-Json $json
-        if ($obj.cmd -eq "exit")
-            { break }
+        if ($obj.cmd -eq "exit") { break }
 
         $p = new-object diagnostics.process; $start = $p.startinfo
         $start.filename = "powershell.exe"
@@ -132,21 +137,21 @@ function sudo_do($parent_pid, $pipe_name, $dir) {
         $p.start()
         $p.waitforexit()
         #$p.exitcode
+
     }
 
     $pipe.Dispose();
     return $p.exitcode
 } 
 
-function try_spawn_server($pipe_name, $dir){
-    if (Test-Path "\\.\pipe\$pipe_name") 
-        { return } 
+function try_spawn_server($pipe_name) {
+    if (Test-Path "\\.\pipe\$pipe_name") { return } 
 
-    if ($DebugOn) { Write-Host "Pipe doesn't exist, gotta create it" }
+    if ($DebugOn) { write-host "Pipe doesn't exist, gotta create it" }
 
     $p = new-object diagnostics.process; $start = $p.startinfo
     $start.filename = "powershell.exe"
-    $start.arguments = "-noprofile & '$pscommandpath' -do $pid $pipe_name $dir`nexit `$lastexitcode"
+    $start.arguments = "-noprofile & '$pscommandpath' -do $pid $pipe_name`nexit `$lastexitcode"
     $start.verb = 'runas'
     $start.windowstyle = 'hidden'
     if ($DebugOn) { $start.windowstyle = 'normal' }
@@ -155,13 +160,13 @@ function try_spawn_server($pipe_name, $dir){
     catch { exit 1 } #user didn't provide consent
 }
 
-function client($pipe_name, $cmd){
+function client($pipe_name, $cmd) {
     $pipe = new-object System.IO.Pipes.NamedPipeClientStream($pipe_name);
     $pipe.Connect(); 
     $sw = new-object System.IO.StreamWriter($pipe);
 
     $props = @{ 'pid'   =   $pid;
-                'dir'   =   $pwd.Path;
+                'dir'   =   (convert-path $pwd); #$pwd.Path;
                 'cmd'   =   $cmd; }
     $obj = New-Object -TypeName PSObject -Prop $props
     $json = ConvertTo-Json $obj
@@ -176,11 +181,9 @@ function client($pipe_name, $cmd){
 }
 
 function serialize($a, $escape) {
-    if($a -is [string] -and $a -match '\s') { return "'$a'" }
-    if($a -is [array]) {
-        return $a | % { (serialize $_ $escape) -join ', ' }
-    }
-    if($escape) { return $a -replace '[>&]', '`$0' }
+    if ($a -is [string] -and $a -match '\s') { return "'$a'" }
+    if ($a -is [array]) { return $a | % { (serialize $_ $escape) -join ', ' } }
+    if ($escape) { return $a -replace '[>&]', '`$0' }
     return $a
 }
 
@@ -191,12 +194,10 @@ if($args[0] -eq '-do') {
 }
 
 $a = serialize $args $true
-$wd = serialize (convert-path $pwd) # convert-path in case pwd is a PSDrive
 $pipe_name = "YashMaster\$pid"
 $savetitle = $host.ui.rawui.windowtitle
 
-try_spawn_server $pipe_name $wd
-
+try_spawn_server $pipe_name
 client $pipe_name $a
 
 $host.ui.rawui.windowtitle = $savetitle
