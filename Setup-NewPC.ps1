@@ -88,6 +88,23 @@ Function Add-Path
 	
 
 Function Get-Path() { return $env:Path }
+
+#Alternative method to [Environment]::SetEnvironmentVariable("Path", $env:Path + ";C:\Path", [EnvironmentVariableTarget]::Machine)
+Function Have-RegKey
+{	
+	[CmdletBinding()]
+	Param
+	( 
+		[Parameter(Mandatory=$true, ValueFromPipeline=$true)]
+		[String]$Path,
+		[Parameter(Mandatory=$true, ValueFromPipeline=$true)]
+		[String]$Name,
+		$Value
+	)
+	if(-not (Test-Path $Path))
+		{New-Item -Path $Path}
+	New-ItemProperty -Force -Path $Path -Name $Name -Value $Value 
+}
 ############################################################################
 
 
@@ -175,13 +192,14 @@ New-ItemProperty -Path 'HKCU:\Control Panel\Desktop' -Name "DelayLockInterval" -
 New-ItemProperty -Path 'HKLM:\Software\Policies\Microsoft\Windows\System' -Name "AllowDomainDelayLock" -Value 0x01 -PropertyType DWORD -Force
 
 
+#Step 2.25: Disable Aero-Shake
+Write-Host "Disabling Aero-Shake..." -ForegroundColor Green
+Have-RegKey -Path 'HKCU:\Software\Policies\Microsoft\Windows\Explorer' -Name "NoWindowMinimizingShortcuts" -Value 00000001
 
 #Step 2.5: Install Notification Center re-map
 Write-Host "Installing NotificationCenterSanity..." -ForegroundColor Green
 copy ".\WindowsTweaks\NotificationCenterSanity.exe" "$env:AppData\Microsoft\Windows\Start Menu\Programs\Startup\NotificationCenterSanity.exe"
 & "$env:AppData\Microsoft\Windows\Start Menu\Programs\Startup\NotificationCenterSanity.exe"
-
-
 
 #Step 3: Install Sound+Brightness re-map
 Write-Host "Installing SoundBrightness re-map..." -ForegroundColor Green
