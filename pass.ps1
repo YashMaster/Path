@@ -16,13 +16,15 @@
 #	-Calling exit after calling pass will hang the window. I think this is because pass is waiting for its child processes to exit
 #	-Calling pass from within a script will not reprompt for UAC...
 #	-Std in/out/error redirection and piping don't work at all...
-#	-If the command takes longer than 3 seconds to execute, the client will timeout
 #	-Transition mode is byte (not message)
-#	-Commands must be less than BufferSize
 #	-Cannot ctrl+C out of it?
 
+#Fixed bugs:
+#	-If the command takes longer than 3 seconds to execute, the client will timeout
+#	-Commands must be less than BufferSize
 
-$DebugOn = $true
+
+$DebugOn = $false
 $GracePeriod = 1000 * 60 * 15 #15 minute grace period by default. 
 $Source = @"
 using System;
@@ -33,7 +35,6 @@ using System.Threading.Tasks;
 
 public static class Pipes
 {
-    public static int BuffSize = 8192;
     public static bool ListenForConnection(NamedPipeServerStream pipe, int TimeOut = 3000)
     {
         var asyncResult = pipe.BeginWaitForConnection(null, null);
@@ -43,25 +44,6 @@ public static class Pipes
             return true;
         }
         return false;
-    }
-
-    public static async Task<String> ReadCmdAsync(PipeStream pipe, int timeout = 3000)
-    {
-        String ret = "";
-        using (var cancellationTokenSource = new CancellationTokenSource(timeout))
-        using(cancellationTokenSource.Token.Register(() => pipe.Dispose()))
-        {
-            int receivedCount;
-            try
-            {
-                var buffer = new byte[BuffSize];
-                receivedCount = await pipe.ReadAsync(buffer, 0, BuffSize, cancellationTokenSource.Token);
-                ret = System.Text.Encoding.Default.GetString(buffer);
-                ret = ret.Substring(0, receivedCount);
-            }
-            catch (TimeoutException) {}
-        }
-        return ret;
     }
 }
 "@
@@ -79,44 +61,6 @@ function write_msg($pipe, $msg) {
     $sw.Flush()
 }
 
-#this is the original-working version
-function read_obj($pipe, $timeout=0) { 
-	if ($DebugOn) { Write-Host "before read" }
-    $json = [Pipes]::ReadCmdAsync($pipe, $timeout).Result;
-	if ($DebugOn) { Write-Host "after read: $json" }
-    $obj = ConvertFrom-Json $json
-    $obj
-}
-
-function read_all($sr)
-{
-	$ret = ""
-	#while ($sr.Peek() -ne -1) { $ret += ($sr.Read() -as [char]) }
-	while ($sr.Peek() -ne -1) { $ret += $sr.ReadLine() + "`n" }
-	$ret
-}
-
-function read_obj2($pipe, $timeout=0) { 
-	if ($DebugOn) { Write-Host "before read" }
-	$sr = New-Object System.IO.StreamReader($pipe)
-	
-	$start = (Get-Date).AddMilliseconds($timeout)
-	while ($timeout -ne 0)
-	{
-		$isEmpty = $sr.Peek()
-		write-host "isEmpty = $isEmpty"
-		if ($isEmpty -ne -1) { break }
-		if ($start.CompareTo((Get-Date)) -le 0) { return "" }
-		Start-Sleep -Milliseconds 500
-	}
-
-	write-host "about to read to end"
-    $json = read_all $sr
-	if ($DebugOn) { Write-Host "after read: $json" }
-    $obj = ConvertFrom-Json $json
-    $obj
-}
-
 function read_msg($pipe, $timeout=0) { 
 	if ($DebugOn) { Write-Host "before read" }
 	$sr = New-Object System.IO.StreamReader($pipe)
@@ -126,7 +70,6 @@ function read_msg($pipe, $timeout=0) {
 	if ($DebugOn) { Write-Host ("after read: " + (ConvertTo-Json $msg)) }
     $msg
 }
-
 
 
 #Returns a pipe. Closes a pipe if an open one is passed
