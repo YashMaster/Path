@@ -13,15 +13,16 @@
 #	-Add grace period feature
 
 #Knwon Bugs
-#	-Calling exit after calling pass will hang the window. I think this is because pass is waiting for its child processes to exit
+#	-Calling pass from an already-elevated window is a huge waste of life. Perf hit for no reason. 
 #	-Calling pass from within a script will not reprompt for UAC...
 #	-Std in/out/error redirection and piping don't work at all...
 #	-Transition mode is byte (not message)
 #	-Cannot ctrl+C out of it?
+#	-Calling exit after a successful call to pass will leave an orphaned powershell+Conhost
 
-#Fixed bugs:
-#	-If the command takes longer than 3 seconds to execute, the client will timeout
-#	-Commands must be less than BufferSize
+#Fixed Bugs
+#	-Calling exit after calling pass will hang the window. I think this is because pass is waiting for its child processes to exit
+#		-That was wrong. It was because the child process was still holding on to the console host. Fix was to only redirect to parents console when executing a command.
 
 
 $DebugOn = $false
@@ -61,7 +62,7 @@ function write_msg($pipe, $msg) {
     $sw.Flush()
 }
 
-function read_msg($pipe, $timeout=0) { 
+function read_msg($pipe) { 
 	if ($DebugOn) { Write-Host "before read" }
 	$sr = New-Object System.IO.StreamReader($pipe)
     $json = $sr.ReadLine()
@@ -86,19 +87,16 @@ function get_pipe($pipe, $pipe_name) {
 }
 
 function sudo_do($parent_pid, $pipe_name, $dir) {
-    $src = 'using System.Runtime.InteropServices;
+    $src = '
+	using System.Runtime.InteropServices;
     public class Kernel {
         [DllImport("kernel32.dll", SetLastError = true)]
         public static extern bool AttachConsole(uint dwProcessId);
         [DllImport("kernel32.dll", SetLastError = true, ExactSpelling = true)]
         public static extern bool FreeConsole();
     }'
-	
-    if (-not $DebugOn){
-        $kernel = add-type $src -passthru
-        $kernel::freeconsole()
-        $kernel::attachconsole($parent_pid)
-    }
+	$kernel = add-type $src -passthru
+
 
     $pipe = $null
     while ($true) {
@@ -106,27 +104,26 @@ function sudo_do($parent_pid, $pipe_name, $dir) {
         $ret = [Pipes]::ListenForConnection($pipe);
         if (-not $ret) { if ($DebugOn) { Write-Host "connection was no good..." }; continue }
 		
-        $obj = read_msg $pipe 3000
-		if ($obj.cmd.Length -le 0) { if ($DebugOn) { Write-Host "cmd length <= 0" }; continue}
+        $msg = read_msg $pipe
+		if ($msg.cmd.Length -le 0) { if ($DebugOn) { Write-Host "cmd length <= 0" }; continue}
+		if ($msg.cmd -eq "exit") { break }
 
-        
-        if ($obj.cmd -eq "exit") { break }
-
+		if (-not $DebugOn){ $kernel::freeconsole(); $kernel::attachconsole($parent_pid) }
         $p = New-Object diagnostics.process; $start = $p.startinfo
         $start.filename = "powershell.exe"
-        $start.arguments = "-noprofile $($obj.cmd)`nexit `$lastexitcode"
+        $start.arguments = "-noprofile $($msg.cmd)`nexit `$lastexitcode"
         $start.useshellexecute = $false
-        $start.workingdirectory = $obj.dir
+        $start.workingdirectory = $msg.dir
         $p.start()
         $p.waitforexit()
-        
+		if (-not $DebugOn) { $kernel::freeconsole() }
+		
 		$props = @{ 'pid'   =   $pid;
 					'dir'   =   (Convert-Path $pwd);
 					'cmd'   =   $cmd; 
 					'ret'   =   $p.exitcode; }
-		$obj = New-Object -TypeName PSObject -Prop $props
-		
-        write_msg $pipe $obj
+		$msg = New-Object -TypeName PSObject -Prop $props
+        write_msg $pipe $msg
     }
 
     $pipe.Dispose()
