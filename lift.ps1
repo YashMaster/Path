@@ -278,7 +278,11 @@ catch [System.Exception]
 	return
 }
 Write-Output "lift: elevating..."
-Sleep 1
+Sleep 2
+
+#If this window is going to be killed anyway, then don't give the user another opportunity to type a command
+if($NoExit -eq $false)
+	{Sleep 10}
 
 #Exit the new powershell console we created... if we created one from the bat
 if($FromBat)

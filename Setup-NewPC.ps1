@@ -6,12 +6,20 @@
 #	#Set sleep to never if desktop
 #	#Copy shortcuts to desktop
 #	#Add %OneDrive% env var 
-#	#Add Scoop installation
 #	#Add PS configurations
-#Done:
-#	#Remove all pauses
-#	#Make this a cmdlet
-#	#Add font installation
+#	#Add PowerSHell Profile
+#	#Import notepad++ settings 
+#	#update help
+#	#add "explore" as alias for "explorer ."
+#	#Import conemu settings
+#	#Configure good File Explorer "Quick-Access" links
+#	#Right-click "Open powershell here"
+#	#Always show Right-click "Get path" 
+#
+#	#Remove WinMerge from ninite.exe
+
+#http://jbeckwith.com/2012/11/28/5-steps-to-a-better-windows-command-line/
+
 
 
 
@@ -205,6 +213,42 @@ copy ".\WindowsTweaks\NotificationCenterSanity.exe" "$env:AppData\Microsoft\Wind
 Write-Host "Installing SoundBrightness re-map..." -ForegroundColor Green
 copy ".\WindowsTweaks\AutoHotKey\SoundBrightness.exe" "$env:AppData\Microsoft\Windows\Start Menu\Programs\Startup\SoundBrightness.exe"
 & "$env:AppData\Microsoft\Windows\Start Menu\Programs\Startup\SoundBrightness.exe"
+
+
+#Use this to declare ps64
+#For more details see: http://karlprosser.com/coder/2011/11/04/calling-powershell-64bit-from-32bit-and-visa-versa/
+Write-Host "Installing Hyper-V and TelnetClient..." -ForegroundColor Green
+Function Get-Ps64($emptyIfAlready64=$false)
+{		
+	if (-not [Environment]::Is64BitProcess)
+		{ return "$env:windir\sysnative\WindowsPowerShell\v1.0\powershell.exe" }
+	
+	if ($emptyIfAlready64)
+		{ return "" }
+		
+	return "$env:windir\System32\WindowsPowerShell\v1.0\powershell.exe"
+}
+$ps64 = Get-Ps64
+& $ps64 Enable-WindowsOptionalFeature -Online -FeatureName TelnetClient -All
+& $ps64 Enable-WindowsOptionalFeature -Online -FeatureName Microsoft-Hyper-V -All
+
+
+
+#Install-Package ConEmu -Force
+#Install-Package git -params '"/GitAndUnixToolsOnPath /NoAutoCrlf"'.
+#Get-PackageProvider -Name chocolatey -Force -ForceBootstrap
+#Install-Package poshgit -Force
+#Install-Package vim -Force
+#Install-Package ConEmu -Force
+#install-package -provider chocolatey -force cmder
+
+#Install Scoop
+iex (new-object net.webclient).downloadstring('https://get.scoop.sh')
+#scoop install git
+scoop install openssh
+[environment]::setenvironmentvariable('GIT_SSH', (resolve-path (scoop which ssh)), 'USER')
+scoop bucket add extras
+scoop install conemu
 
 
 

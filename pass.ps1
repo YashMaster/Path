@@ -1,32 +1,21 @@
-#Important Note: This is _heavily_ based off of @lukesampson's implementation in psutils. 
-#   Check out the original project here: https://github.com/lukesampson/psutils
-##
-#lift - because we deserve nice things too
-##
-#
+#pass - because we deserve nice things too
+
+#Important Note: 
+#	-This is based off of @lukesampson's implementation in psutils. 
+#   -Check out the original project here: https://github.com/lukesampson/psutils
+
 #TODO
 #   -Prevent anyone from using the pipe but the parent process
-#       -This could always done by using some kind of encryption. However that feels overengineerd and this entire implementation is already insecure, so i's not worth it.
-#   -Bi-Directional communication
-#   -See if there's a way to close this bitch without explicitly sending an exit command 
-#   -See if there's a way to avoid the second powershell invocation
-#       -AKA redirect currnet powershell better...
-#       -Might be possible by starting with no console OR by starting 
+#       -This could always done by using some kind of encryption. However that feels overengineered and this entire implementation is already insecure, so i's not worth it.
 #
-#woah, i think i just realized why the second powershell is necessary. probably because there's some windows-specific code in shell-execute 
-#which always creates a console for powershell. unfortunately we HAVE to use shellexecute otherwise, there's no way to elevate. 
-#potential work around: 
 #   -launch powershell twice IMMEDIATELY. this is basically what we do today, 
 #   but we only have to launch the second powershell once instead of once per command.
+#   -pipe security :( 
+#	-HWND security :(
 
-#Interesting:
-#   -no idea how to handle "cd" commands... pass back pwd of admin ps?
+#Knwon Bugs
+#	-Calling exit after calling pass will hang the window. I think this is because pass is waiting for its child processes to exit
 
-#TODO
-#   -get return value! 
-#   -security :( 
-#    -figure out how to close this hidden console...
-#   - DO THIS FIRST - try launching the second powershell immediately!
 
 
 $DebugOn = $false
@@ -51,11 +40,12 @@ public static class Pipes
         return false;
     }
 
-    public static async Task<String> ReadCmdAsync(NamedPipeServerStream pipe, int timeout = 3000)
+    public static async Task<String> ReadCmdAsync(PipeStream pipe, int timeout = 3000)
     {
         String ret = "";
         using (var cancellationTokenSource = new CancellationTokenSource(timeout))
-        using(cancellationTokenSource.Token.Register(() => pipe.Disconnect()))
+        //using(cancellationTokenSource.Token.Register(() => pipe.Disconnect()))
+        using(cancellationTokenSource.Token.Register(() => pipe.Dispose()))
         {
             int receivedCount;
             try
@@ -83,11 +73,13 @@ function write_obj($pipe, $obj) {
     $sw = new-object system.io.streamwriter($pipe);
     $sw.writeline($json); 
     $sw.flush();
-    $sw.dispose(); 
+    #$sw.dispose(); 
 }
 
 function read_obj($pipe, $timeout=3000) { 
+	if ($DebugOn) { write-host "before read" }
     $json = [Pipes]::ReadCmdAsync($pipe, $timeout).Result;
+	if ($DebugOn) { write-host "after read: $json" }
     $obj = ConvertFrom-Json $json
     $obj
 }
@@ -123,10 +115,12 @@ function sudo_do($parent_pid, $pipe_name, $dir) {
     while ($true) {
         $pipe = get_pipe $pipe
         $ret = [Pipes]::ListenForConnection($pipe);
-        if (-not $ret) { continue }
+        if (-not $ret) { if ($DebugOn) { write-host "connection was no good..." }; continue }
+		
+        $obj = read_obj $pipe
+		if ($obj.cmd.Length -le 0) { if ($DebugOn) { write-host "cmd length <= 0" }; continue}
 
-        $json = [Pipes]::ReadCmdAsync($pipe).Result;
-        $obj = ConvertFrom-Json $json
+        
         if ($obj.cmd -eq "exit") { break }
 
         $p = new-object diagnostics.process; $start = $p.startinfo
@@ -136,17 +130,21 @@ function sudo_do($parent_pid, $pipe_name, $dir) {
         $start.workingdirectory = $obj.dir
         $p.start()
         $p.waitforexit()
-        #$p.exitcode
-
+        
+		$props = @{ 'pid'   =   $pid;
+					'dir'   =   (convert-path $pwd);
+					'cmd'   =   $cmd; 
+					'ret'   =   $p.exitcode; }
+		$obj = New-Object -TypeName PSObject -Prop $props
+		
+        write_obj $pipe $obj
     }
 
-    $pipe.Dispose();
-    return $p.exitcode
+    $pipe.Dispose()
 } 
 
 function try_spawn_server($pipe_name) {
     if (Test-Path "\\.\pipe\$pipe_name") { return } 
-
     if ($DebugOn) { write-host "Pipe doesn't exist, gotta create it" }
 
     $p = new-object diagnostics.process; $start = $p.startinfo
@@ -156,28 +154,23 @@ function try_spawn_server($pipe_name) {
     $start.windowstyle = 'hidden'
     if ($DebugOn) { $start.windowstyle = 'normal' }
 
-    try { $null = $p.start() }
-    catch { exit 1 } #user didn't provide consent
+    try 	{ $null = $p.start() }
+    catch 	{ exit 1 } #user didn't provide consent
 }
 
 function client($pipe_name, $cmd) {
-    $pipe = new-object System.IO.Pipes.NamedPipeClientStream($pipe_name);
-    $pipe.Connect(); 
-    $sw = new-object System.IO.StreamWriter($pipe);
-
     $props = @{ 'pid'   =   $pid;
                 'dir'   =   (convert-path $pwd); #$pwd.Path;
-                'cmd'   =   $cmd; }
+                'cmd'   =   $cmd; 
+				'ret'   =   0; }
     $obj = New-Object -TypeName PSObject -Prop $props
-    $json = ConvertTo-Json $obj
-
-    $sw.WriteLine($json); 
-    $sw.Flush();
-    if ($DebugOn) { Write-Host "json: $json"}
-    Sleep 2
-
-    $sw.Dispose(); 
-    $pipe.Dispose();
+	
+	$pipe = new-object System.IO.Pipes.NamedPipeClientStream($pipe_name);
+	$pipe.Connect();
+    write_obj $pipe $obj
+    $response = read_obj $pipe
+	$pipe.Dispose();
+	$response.ret
 }
 
 function serialize($a, $escape) {
@@ -198,7 +191,7 @@ $pipe_name = "YashMaster\$pid"
 $savetitle = $host.ui.rawui.windowtitle
 
 try_spawn_server $pipe_name
-client $pipe_name $a
+$exitcode = client $pipe_name $a
 
 $host.ui.rawui.windowtitle = $savetitle
-#exit $p.exitcode
+exit $exitcode
