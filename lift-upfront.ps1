@@ -1,4 +1,4 @@
-#lift - is one of many 'sudo for Windows' implementations, but it is the best one. because we deserve nice things too.
+#pass - because we deserve nice things too
 
 #Important Note: 
 #	-This is based off of @lukesampson's implementation in psutils. 
@@ -13,12 +13,15 @@
 #	-Add grace period feature
 
 #Knwon Bugs
-#	-Calling lift from an already-elevated window is a huge waste of life. Perf hit for no reason. 
-#	-Calling lift from within a script will not reprompt for UAC...
+#	-Calling pass from an already-elevated window is a huge waste of life. Perf hit for no reason. 
+#	-Calling pass from within a script will not reprompt for UAC...
 #	-Std in/out/error redirection and piping don't work at all...
+#	-Transition mode is byte (not message)
 #	-Cannot ctrl+C out of it?
+#	-Calling exit after a successful call to pass will leave an orphaned powershell+Conhost
 
-$DebugOn = $false
+
+$DebugOn = $true
 $GracePeriod = 1000 * 60 * 15 #15 minute grace period by default. 
 $Source = @"
 using System;
@@ -43,10 +46,10 @@ public static class Pipes
 "@
 if (-not ([System.Management.Automation.PSTypeName]'Pipes').Type) { Add-Type -TypeDefinition $Source -Language CSharp }
 
-if (!$args) { "usage: lift <cmd...>"; exit 1 }
+if (!$args) { "usage: sudo <cmd...>"; exit 1 }
 
 function is_admin { return ([System.Security.Principal.WindowsIdentity]::GetCurrent().UserClaims | ? { $_.Value -eq 'S-1-5-32-544'}) }
-if (!(is_admin)) { [console]::error.writeline("lift: you must be an administrator to run lift"); exit 1 }
+if (!(is_admin)) { [console]::error.writeline("sudo: you must be an administrator to run sudo"); exit 1 }
 
 function write_msg($pipe, $msg) { 
     $json = ConvertTo-Json -Compress $msg
@@ -65,18 +68,19 @@ function read_msg($pipe) {
     $msg
 }
 
-#Returns an open pipe. Closes a pipe if an open one is passed.
+
+#Returns a pipe. Closes a pipe if an open one is passed
 #Fun note: to list all pipes use: get-childitem "\\.\pipe\"
 function get_pipe($pipe, $pipe_name) {
-    if($pipe -ne $null) { $pipe.Dispose(); }
+    if($pipe -ne $null) { $pipe.Dispose(); } #Write-Host "pipe was not null: $pipe"
     $pipeSecurity = New-Object IO.Pipes.PipeSecurity
     $pipeSecurity.AddAccessRule((New-Object IO.Pipes.PipeAccessRule("Everyone", [IO.Pipes.PipeAccessRights]::FullControl, 0)))
-    $pipe = New-Object IO.Pipes.NamedPipeServerStream($pipe_name, [IO.Pipes.PipeDirection]::InOut, 1, [IO.Pipes.PipeTransmissionMode]::Message, 
+    $pipe = New-Object IO.Pipes.NamedPipeServerStream($pipe_name, [IO.Pipes.PipeDirection]::InOut, 1, [IO.Pipes.PipeTransmissionMode]::Byte, 
         [IO.Pipes.PipeOptions]::Asynchronous, [Pipes]::BuffSize, [Pipes]::BuffSize, $pipeSecurity, 0, [IO.Pipes.PipeAccessRights]::ChangePermissions)
     $pipe
 }
 
-function server($parent_pid, $pipe_name, $dir) {
+function sudo_do($parent_pid, $pipe_name, $dir) {
     $src = '
 	using System.Runtime.InteropServices;
     public class Kernel {
@@ -88,31 +92,30 @@ function server($parent_pid, $pipe_name, $dir) {
         public static extern bool FreeConsole();
     }'
 	$kernel = add-type $src -passthru
-	
+
     $pipe = $null
     while ($true) {
         $pipe = get_pipe $pipe $pipe_name
         $ret = [Pipes]::ListenForConnection($pipe);
-		if ((Get-Process | ? { $_.Id -eq $parent_pid -and $_.Name -eq "powershell" }) -eq $null) { break }
         if (-not $ret) { if ($DebugOn) { Write-Host "connection was no good..." }; continue }
 		
         $msg = read_msg $pipe
-		if ($msg.cmd.Length -le 0) { if ($DebugOn) { Write-Host "cmd length <= 0" }; continue }
+		if ($msg.cmd.Length -le 0) { if ($DebugOn) { Write-Host "cmd length <= 0" }; continue}
 		if ($msg.cmd -eq "exit") { break }
 
 		if (-not $DebugOn){ $kernel::freeconsole(); $kernel::attachconsole($parent_pid) }
-		
-		
-		#$cmd = "& $($msg.cmd)"
-		#Invoke-Expression $cmd
-		
-        $p = New-Object diagnostics.process; $start = $p.startinfo
-        $start.filename = "powershell.exe"
-        $start.arguments = "-noprofile $($msg.cmd)`nexit `$lastexitcode"
-        $start.useshellexecute = $false
-        $start.workingdirectory = $msg.dir
-        $p.start()
-        $p.waitforexit()
+		#command execution goes here
+		#Write-Host "i'm executing a command now! cmd is: $($msg.cmd)"
+		$kernel::freeconsole();
+		$kernel::allocconsole();
+		$cmd = "& $($msg.cmd)"
+		Invoke-Expression $cmd
+		#& $cmd 
+		#& "$cmd"
+		#$cmd
+		$msg.ret = $lastexitcode
+		#Write-Host "executed cmd: $cmd"
+		Sleep 10
 		if (-not $DebugOn) { $kernel::freeconsole() }
 		
 		$props = @{ 'pid'   =   $pid;
@@ -132,7 +135,7 @@ function try_spawn_server($pipe_name) {
 
     $p = New-Object diagnostics.process; $start = $p.startinfo
     $start.filename = "powershell.exe"
-    $start.arguments = "-noprofile & '$pscommandpath' -do $pid $pipe_name`nexit `$lastexitcode"
+    $start.arguments = "-noprofile & '$pscommandpath' -bootstrap $pid $pipe_name`nexit `$lastexitcode"
     $start.verb = 'runas'
     $start.windowstyle = 'hidden'
     if ($DebugOn) { $start.windowstyle = 'normal' }
@@ -163,9 +166,26 @@ function serialize($a, $escape) {
     return $a
 }
 
+if($args[0] -eq '-bootstrap') {
+    $null, $parent_pid, $pipe_name, $dir= $args
+	write-host "parent pid: $parent_pid"
+	write-host "parent pipename: $pipe_name"
+	
+	$p = New-Object diagnostics.process; $start = $p.startinfo
+	$start.filename = "powershell.exe"
+	#$start.arguments = "-noprofile $($msg.cmd)`nexit `$lastexitcode"
+	$start.arguments = "-noprofile & '$pscommandpath' -do $parent_pid $pipe_name"
+	$start.useshellexecute = $false
+	#$start.workingdirectory = $msg.dir
+	$p.start()
+	#$p.waitforexit()
+	
+    exit $exit_code
+}
+
 if($args[0] -eq '-do') {
     $null, $parent_pid, $parent_pipe_name, $dir = $args
-    $exit_code = server $parent_pid $parent_pipe_name $dir
+    $exit_code = sudo_do $parent_pid $parent_pipe_name $dir
     exit $exit_code
 }
 

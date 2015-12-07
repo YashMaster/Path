@@ -1,97 +1,293 @@
-if(!$args) { "usage: sudo <cmd...>"; exit 1 }
+<#
+.SYNOPSIS
+   Opens an elevated console.
 
-function is_admin {
-	return ([System.Security.Principal.WindowsIdentity]::GetCurrent().UserClaims | ? { $_.Value -eq 'S-1-5-32-544'})
-}
+.DESCRIPTION
+	Typing "lift" will cause a UAC prompt but it will create a new window.
+	You will stay in the same directory but it will not retain cmdhistory or anything like that.
+	Extensive effort has gone into making this the best experience possible. Window stays in the same location, 
+	it's got a semi-decent animation, the syntax is easy, it can run from PowerShell and cmd. 
 
-function sudo_do($parent_pid, $dir, $cmd) {
-	$src = 'using System.Runtime.InteropServices;
-	public class Kernel {
-		[DllImport("kernel32.dll", SetLastError = true)]
-		public static extern bool AttachConsole(uint dwProcessId);
-		[DllImport("kernel32.dll", SetLastError = true, ExactSpelling = true)]
-		public static extern bool FreeConsole();
-	}'
+.PARAMETER Cmd
+    Specifies using cmd.exe instead of PowerShell.
 
-	$kernel = add-type $src -passthru
+.PARAMETER Use32
+    Specifies using 32bit equivalents of the shell.
 
-		write-host "hi"
-	powershell -noprofile write-host 'i am a sibling to the third heat 1'
-	& powershell -noprofile write-host 'i am a sibling to the third heat 1'
+.PARAMETER NoExit
+    Keeps the current console window open.
+
+.PARAMETER FromBat
+    For internal use only. Specifies that this script was launched from the .bat file equivalent. You shouldn't set this.
+
+.PARAMETER FromLift
+    For internal use only. Specifies that this script was launched from the newly elevated console. You shouldn't set this.
+
+.PARAMETER Verbose
+    Includes debug info. Note that when -Verbose is specified -NoExit:$true is also specified. Whether you like it or not :) 
+
+.EXAMPLE
+	lift 
+	lift -NoExit 
+	lift -Verbose 
+	lift -Use32 ls .\Desktop
+
+.NOTES
 	
-
-
-	Write-host "freeing console and sleeping for 5 seconds"
-	$kernel::freeconsole()
-	$kernel::attachconsole($parent_pid)
-	sleep 5
+	TODO: implement "fall" or "drop" which is the opposite
+	TODO: launch source app with same commandline params but elevated
+	TODO: PS: preserve command history (is this necessary?)
+	TODO: PS: preserve previously onscreen text
+	TODO: PS: preserve all objects and functions
+	TODO: preserve the process environment and environmentvariables
 	
-	write-output "console has been re-attached "
-	write-output "command is still $cmd"
-	
-	& cmd.exe /c echo i-was-echo-d	
-	#sleep 5
-	& powershell -noprofile write-host 'i am a sibling to the third heat'
+	TODO: add lift -RunOnce
+	TODO: add timing statements for verbose output. 
+#>
 
-	$p = new-object diagnostics.process; $start = $p.startinfo
-	$start.filename = "powershell.exe"
-	$start.arguments = "-noprofile $cmd`nexit `$lastexitcode"
-	$start.useshellexecute = $false
-	$start.workingdirectory = $dir
-	$p.start()
-	$p.waitforexit()
+[CmdletBinding()] 
+Param
+(
+	[switch]$Cmd = $false,
+	[switch]$Use32 = $false,
+	[switch]$NoExit = $false,
+	[switch]$FromBat = $false,
+	[switch]$FromLift = $false,
+	$SourceHwnd,
+	[Parameter(Position=0, ValueFromRemainingArguments=$true)]$args=$null
+)  
 
-	& powershell -noprofile write-host 'i am a sibling to the third heat'
-	& cmd.exe /c echo i-was-echo-d
-	write-output "i was output'd"
-	#write-host "i was hostwriten"
-	echo hihi
-	return $p.exitcode
-} 
+Set-StrictMode -Version Latest
 
-function serialize($a, $escape) {
-	if($a -is [string] -and $a -match '\s') { return "'$a'" }
-	if($a -is [array]) {
-		return $a | % { (serialize $_ $escape) -join ', ' }
+#All the Win32 functions you could ever desire
+Add-Type @"
+	using System;
+	using System.Runtime.InteropServices;
+	 
+	public struct RECT
+	{
+		public int Left;
+		public int Top;
+		public int Right;
+		public int Bottom;
 	}
-	if($escape) { return $a -replace '[>&]', '`$0' }
-	return $a
+	 
+	public class Win32 
+	{
+		public const UInt32 WM_DESTROY = 0x0002;
+		public const UInt32 WM_CLOSE = 0x0010;
+		
+		public const UInt32 SW_HIDE = 0;
+		public const UInt32 SW_SHOWNOACTIVATE = 4;
+		public const UInt32 SW_SHOWNA = 8;
+		public const UInt32 SW_RESTORE = 9;
+		
+		[DllImport("user32.dll")]
+		public static extern IntPtr SendMessage(IntPtr hWnd, UInt32 Msg, Int32 wParam, Int32 lParam);
+	
+		[DllImport("user32.dll")]
+		[return: MarshalAs(UnmanagedType.Bool)]
+		public static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
+		
+		[DllImport("user32.dll")]
+		[return: MarshalAs(UnmanagedType.Bool)]
+		public static extern bool SetForegroundWindow(IntPtr hWnd);
+
+		[DllImport("user32.dll")]
+		public static extern IntPtr GetForegroundWindow();
+
+		[DllImport("Kernel32.dll")]
+		public static extern IntPtr GetConsoleWindow();
+		
+		[DllImport("User32.dll")]
+		public static extern bool ShowWindow(IntPtr hWnd, Int32 nCmdShow);
+		
+		[DllImport("user32.dll", SetLastError = true)]
+		public static extern bool MoveWindow(IntPtr hWnd, int X, int Y, int nWidth, int nHeight, bool bRepaint);
+		
+		public static bool MoveWindow(IntPtr hwnd, ref RECT rc)
+		{
+			return MoveWindow(hwnd, rc.Left, rc.Top, rc.Right - rc.Left, rc.Bottom - rc.Top, true);
+		}
+	}
+"@
+
+Function Get-ConsolePath($Cmd, $Use32)
+{	
+	if    ($Cmd -and $Use32)
+		{$ret = "$env:SystemRoot\System32\cmd.exe"}
+		
+	elseif($Cmd -and !$Use32)
+		{$ret = "$env:SystemRoot\SysWOW64\cmd.exe"}
+		
+	elseif(!$Cmd -and $Use32)
+		{$ret = "$env:SystemRoot\System32\WindowsPowerShell\v1.0\PowerShell.exe"}
+		
+	else
+		{$ret = "$env:SystemRoot\SysWOW64\WindowsPowerShell\v1.0\powershell.exe"}
+	
+	$ret
 }
 
-if($args[0] -eq '-do') {
-	$null, $dir, $parent_pid, $cmd = $args
-	$exit_code = sudo_do $parent_pid $dir (serialize $cmd)
-	exit $exit_code
+Function Get-UserRequestedCommand($passedArgs)
+{  	
+	$ret = "& "
+	foreach ($arg in $passedArgs)  
+		{$ret += "'$arg' "} #Note the whitespace! Keep it there or you will be sad!
+	#$ret.TrimEnd(" ") Note: Leave the last space there! It helps prevent weird parsing bugs when the last command ends in '\'
+	$ret
 }
 
-if(!(is_admin)) {
-	[console]::error.writeline("sudo: you must be an administrator to run sudo")
-	exit 1
+Function Get-UserRequestedCommandReadable($passedArgs)
+{  	
+	$ret = ""
+	foreach ($arg in $passedArgs)  
+		{$ret += "$arg "}
+	$ret
 }
 
-$a = serialize $args $true
-$wd = serialize (convert-path $pwd) # convert-path in case pwd is a PSDrive
+#This the set of commands that need to be run in the target elevated PowerShell _before_ the command the user passed. 
+#This does things like position the window properly, set the proper working directory, etc...
+Function Get-CommandToRun($passedArgs)
+{
+	$ret = ""
 
-$savetitle = $host.ui.rawui.windowtitle
-$p = new-object diagnostics.process; $start = $p.startinfo
-$start.filename = "powershell.exe"
-$start.arguments = "-noprofile & '$pscommandpath' -do $wd $pid $a`nexit `$lastexitcode"
-$start.verb = 'runas'
-#$start.windowstyle = 'hidden'
-try { $null = $p.start() }
-catch { exit 1 } # user didn't provide consent
-#$p.waitforexit()
+	$SourceHwnd = [Win32]::GetConsoleWindow()
+	
+	#Runs this script again with the FromLift param set to true. Also propagates the verbosity and @NoExit switch
+	#if($PSCmdlet.MyInvocation.BoundParameters["Verbose"].IsPresent)
+	if($PSCmdlet.MyInvocation.BoundParameters["Verbose"])
+		{$ret += "& '$PSCommandPath' -FromLift -SourceHwnd $SourceHwnd -NoExit -Verbose;"}
+	else
+		{$ret += "& '$PSCommandPath' -FromLift -SourceHwnd $SourceHwnd -NoExit:`$$NoExit;"}
+	
+	#Set the current directory accordingly
+	$ret += "cd '" + (Resolve-Path .\).Path + "';"
+	
+	#If there's a @userRequested command, include commands to write those to the console and execute them
+	if($passedArgs -ne $null -and $passedArgs.Length -ge 1)
+	{
+		#I have no idea why, but "write-output" really messes things up here...
+		#And "echo" causes it to return all the info on different lines... Write-Host it is!
+		$ret += "Write-Host """ + (Get-UserRequestedCommandReadable $passedArgs) + """;"	#Shows which command the user wanted to run
+		$ret += """" + (Get-UserRequestedCommand $passedArgs) + """;" 						#Actually runs the userCommand
+	}
+	
+	$ret
+}
+
+Function Print-Args($passedArgs)
+{
+	Write-Verbose "Cmd:		$($Cmd)"
+	Write-Verbose "Use32:		$($Use32)"
+	Write-Verbose "NoExit:		$($NoExit)"
+	Write-Verbose "FromBat:	$($FromBat)"
+	Write-Verbose "FromLift:	$($FromLift)"
+	Write-Verbose "SourceHwnd:	$($SourceHwnd)"
+	
+	$i = 0
+	Write-Verbose "PassedArgs:"
+	foreach ($arg in $passedArgs)  
+	{
+		Write-Verbose "`t[$i]:`t$($arg)"
+		$i++
+	}	
+	
+	Write-Verbose "ConsolePath:	$($ConsolePath)"
+	Write-Verbose "UserRequestedCommand:	$($UserRequestedCommand)"
+	Write-Verbose "Command:	$($Command)"
+	$commandLine = (Get-WmiObject Win32_Process | where ProcessID -eq $pid).CommandLine
+	Write-Verbose "CurrentProc CmdLine: $commandLine" 
+	
+	#$ParentPid = (gwmi win32_process -Filter "processid='$pid'").parentprocessid; 
+	#$ParentProc = [System.Diagnostics.Process]::GetProcessById($ParentPid)
+	#Write-Verbose "parent: $($ParentPid)"
+	#Write-Verbose "parentProc: $($ParentProc)"
+}
+
+Function IsRunningElevated()
+{
+	$identity = [Security.Principal.WindowsIdentity]::GetCurrent()
+	$principal = New-Object Security.Principal.WindowsPrincipal $identity
+	$principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)  
+}
 
 
 
 
 
+#====================================================================================================
+$ConsolePath = Get-ConsolePath $Cmd $Use32
+$UserRequestedCommand = Get-UserRequestedCommand $args
+$Command = Get-CommandToRun $args
+
+Write-Verbose "Invocation: $($MyInvocation.Line)"
+Print-Args $args
+
+#If we were launched _from_ the lift script (i.e. just elevated) then initalize state
+if($FromLift)
+{
+	$ret = [Win32]::SetForegroundWindow($SourceHwnd)
+	
+	$sourceRect = New-Object Rect
+	$ret = [Win32]::GetWindowRect($SourceHwnd, [ref]$sourceRect)
+	$targetHwnd = [Win32]::GetConsoleWindow()
+	
+	#MoveWindow can't be called while th window is hidden or minimized. 
+	$ret = [Win32]::ShowWindow($targetHwnd, [Win32]::SW_RESTORE)
+	$ret = [Win32]::MoveWindow($targetHwnd, [ref]$sourceRect)
+	
+	#The following two lines eliminate the "restore" animation
+	$ret = [Win32]::ShowWindow($targetHwnd, [Win32]::SW_HIDE)
+	$ret = [Win32]::ShowWindow($targetHwnd, [Win32]::SW_SHOWNOACTIVATE)
+	
+	#Kill the source window 
+	if(-not $NoExit)
+	{
+		$ret = [Win32]::SetForegroundWindow($SourceHwnd)
+		$ret = [Win32]::SendMessage($SourceHwnd, [Win32]::WM_CLOSE	, 0, 0)
+	}
+
+	return
+}
+
+#Make sure the script isn't already elevated
+if(IsRunningElevated)
+{
+	Write-Output "lift: already elevated"
+	if ($UserRequestedCommand -ne "" -and $UserRequestedCommand -ne "& ")
+		{Invoke-Expression $UserRequestedCommand}
+		
+	break
+}
+
+#Start application
+try
+{
+	$process = New-Object System.Diagnostics.Process
+	$process.StartInfo = (Get-Process -Id $pid).StartInfo
+	$process.StartInfo.FileName = $ConsolePath
+	$process.StartInfo.Arguments = "-NoExit -ExecutionPolicy Unrestricted -Command """ + $Command + """"
+	$process.StartInfo.WindowStyle = 2 #Start minimized
+	$process.StartInfo.Verb = "runas"
+	$process.Start() | Out-Null
+}
+catch [System.Exception]
+{
+	Write-Output "lift: UAC prompt was not accepted."	
+	return
+}
+Write-Output "lift: elevating..."
+Sleep 2
+
+#If this window is going to be killed anyway, then don't give the user another opportunity to type a command
+if($NoExit -eq $false)
+	{Sleep 10}
+
+#Exit the new powershell console we created... if we created one from the bat
+if($FromBat)
+	{$host.SetShouldExit(0)}
 
 
 
 
-
-
-#$host.ui.rawui.windowtitle = $savetitle
-
-#exit $p.exitcode
