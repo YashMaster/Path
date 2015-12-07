@@ -6,19 +6,24 @@
 
 #TODO
 #   -Prevent anyone from using the pipe but the parent process
-#       -This could always done by using some kind of encryption. However that feels overengineered and this entire implementation is already insecure, so i's not worth it.
-#
-#   -launch powershell twice IMMEDIATELY. this is basically what we do today, 
-#   but we only have to launch the second powershell once instead of once per command.
-#   -pipe security :( 
+#       This could always done by using some kind of encryption. However that feels overengineered and this entire implementation is already insecure, so i's not worth it.
+#   -Launch powershell twice IMMEDIATELY. This is basically what we do today, 
+#		but we only have to launch the second powershell once instead of once per command.
 #	-HWND security :(
+#	-Add grace period feature
 
 #Knwon Bugs
 #	-Calling exit after calling pass will hang the window. I think this is because pass is waiting for its child processes to exit
+#	-Calling pass from within a script will not reprompt for UAC...
+#	-Std in/out/error redirection and piping don't work at all...
+#	-If the command takes longer than 3 seconds to execute, the client will timeout
+#	-Transition mode is byte (not message)
+#	-Commands must be less than BufferSize
+#	-Cannot ctrl+C out of it?
 
 
-
-$DebugOn = $false
+$DebugOn = $true
+$GracePeriod = 1000 * 60 * 15 #15 minute grace period by default. 
 $Source = @"
 using System;
 using System.IO;
@@ -44,7 +49,6 @@ public static class Pipes
     {
         String ret = "";
         using (var cancellationTokenSource = new CancellationTokenSource(timeout))
-        //using(cancellationTokenSource.Token.Register(() => pipe.Disconnect()))
         using(cancellationTokenSource.Token.Register(() => pipe.Dispose()))
         {
             int receivedCount;
@@ -68,31 +72,72 @@ if (!$args) { "usage: sudo <cmd...>"; exit 1 }
 function is_admin { return ([System.Security.Principal.WindowsIdentity]::GetCurrent().UserClaims | ? { $_.Value -eq 'S-1-5-32-544'}) }
 if (!(is_admin)) { [console]::error.writeline("sudo: you must be an administrator to run sudo"); exit 1 }
 
-function write_obj($pipe, $obj) { 
-    $json = convertto-json $obj
-    $sw = new-object system.io.streamwriter($pipe);
-    $sw.writeline($json); 
-    $sw.flush();
-    #$sw.dispose(); 
+function write_msg($pipe, $msg) { 
+    $json = ConvertTo-Json -Compress $msg
+    $sw = New-Object System.IO.StreamWriter($pipe)
+    $sw.WriteLine($json)
+    $sw.Flush()
 }
 
-function read_obj($pipe, $timeout=3000) { 
-	if ($DebugOn) { write-host "before read" }
+#this is the original-working version
+function read_obj($pipe, $timeout=0) { 
+	if ($DebugOn) { Write-Host "before read" }
     $json = [Pipes]::ReadCmdAsync($pipe, $timeout).Result;
-	if ($DebugOn) { write-host "after read: $json" }
+	if ($DebugOn) { Write-Host "after read: $json" }
     $obj = ConvertFrom-Json $json
     $obj
 }
 
+function read_all($sr)
+{
+	$ret = ""
+	#while ($sr.Peek() -ne -1) { $ret += ($sr.Read() -as [char]) }
+	while ($sr.Peek() -ne -1) { $ret += $sr.ReadLine() + "`n" }
+	$ret
+}
+
+function read_obj2($pipe, $timeout=0) { 
+	if ($DebugOn) { Write-Host "before read" }
+	$sr = New-Object System.IO.StreamReader($pipe)
+	
+	$start = (Get-Date).AddMilliseconds($timeout)
+	while ($timeout -ne 0)
+	{
+		$isEmpty = $sr.Peek()
+		write-host "isEmpty = $isEmpty"
+		if ($isEmpty -ne -1) { break }
+		if ($start.CompareTo((Get-Date)) -le 0) { return "" }
+		Start-Sleep -Milliseconds 500
+	}
+
+	write-host "about to read to end"
+    $json = read_all $sr
+	if ($DebugOn) { Write-Host "after read: $json" }
+    $obj = ConvertFrom-Json $json
+    $obj
+}
+
+function read_msg($pipe, $timeout=0) { 
+	if ($DebugOn) { Write-Host "before read" }
+	$sr = New-Object System.IO.StreamReader($pipe)
+    $json = $sr.ReadLine()
+	if ($json -eq $null -or $json.Length -eq 0) { if ($DebugOn) { Write-Host "read_msg: no message content" }; return "" }
+    $msg = ConvertFrom-Json $json
+	if ($DebugOn) { Write-Host ("after read: " + (ConvertTo-Json $msg)) }
+    $msg
+}
+
+
+
 #Returns a pipe. Closes a pipe if an open one is passed
 #Fun note: to list all pipes use: get-childitem "\\.\pipe\"
-function get_pipe($pipe) {
+function get_pipe($pipe, $pipe_name) {
     if($pipe -ne $null) { $pipe.Dispose(); } #Write-Host "pipe was not null: $pipe"
 
-    $PipeSecurity = New-Object IO.Pipes.PipeSecurity
-    $PipeSecurity.AddAccessRule((New-Object IO.Pipes.PipeAccessRule("Everyone", [IO.Pipes.PipeAccessRights]::FullControl, 0)))
+    $pipeSecurity = New-Object IO.Pipes.PipeSecurity
+    $pipeSecurity.AddAccessRule((New-Object IO.Pipes.PipeAccessRule("Everyone", [IO.Pipes.PipeAccessRights]::FullControl, 0)))
     $pipe = New-Object IO.Pipes.NamedPipeServerStream($pipe_name, [IO.Pipes.PipeDirection]::InOut, 1, [IO.Pipes.PipeTransmissionMode]::Byte, 
-        [IO.Pipes.PipeOptions]::Asynchronous, [Pipes]::BuffSize, [Pipes]::BuffSize, $PipeSecurity, 0, [IO.Pipes.PipeAccessRights]::ChangePermissions)
+        [IO.Pipes.PipeOptions]::Asynchronous, [Pipes]::BuffSize, [Pipes]::BuffSize, $pipeSecurity, 0, [IO.Pipes.PipeAccessRights]::ChangePermissions)
 
     $pipe
 }
@@ -105,6 +150,7 @@ function sudo_do($parent_pid, $pipe_name, $dir) {
         [DllImport("kernel32.dll", SetLastError = true, ExactSpelling = true)]
         public static extern bool FreeConsole();
     }'
+	
     if (-not $DebugOn){
         $kernel = add-type $src -passthru
         $kernel::freeconsole()
@@ -113,17 +159,17 @@ function sudo_do($parent_pid, $pipe_name, $dir) {
 
     $pipe = $null
     while ($true) {
-        $pipe = get_pipe $pipe
+        $pipe = get_pipe $pipe $pipe_name
         $ret = [Pipes]::ListenForConnection($pipe);
-        if (-not $ret) { if ($DebugOn) { write-host "connection was no good..." }; continue }
+        if (-not $ret) { if ($DebugOn) { Write-Host "connection was no good..." }; continue }
 		
-        $obj = read_obj $pipe
-		if ($obj.cmd.Length -le 0) { if ($DebugOn) { write-host "cmd length <= 0" }; continue}
+        $obj = read_msg $pipe 3000
+		if ($obj.cmd.Length -le 0) { if ($DebugOn) { Write-Host "cmd length <= 0" }; continue}
 
         
         if ($obj.cmd -eq "exit") { break }
 
-        $p = new-object diagnostics.process; $start = $p.startinfo
+        $p = New-Object diagnostics.process; $start = $p.startinfo
         $start.filename = "powershell.exe"
         $start.arguments = "-noprofile $($obj.cmd)`nexit `$lastexitcode"
         $start.useshellexecute = $false
@@ -132,12 +178,12 @@ function sudo_do($parent_pid, $pipe_name, $dir) {
         $p.waitforexit()
         
 		$props = @{ 'pid'   =   $pid;
-					'dir'   =   (convert-path $pwd);
+					'dir'   =   (Convert-Path $pwd);
 					'cmd'   =   $cmd; 
 					'ret'   =   $p.exitcode; }
 		$obj = New-Object -TypeName PSObject -Prop $props
 		
-        write_obj $pipe $obj
+        write_msg $pipe $obj
     }
 
     $pipe.Dispose()
@@ -145,9 +191,9 @@ function sudo_do($parent_pid, $pipe_name, $dir) {
 
 function try_spawn_server($pipe_name) {
     if (Test-Path "\\.\pipe\$pipe_name") { return } 
-    if ($DebugOn) { write-host "Pipe doesn't exist, gotta create it" }
+    if ($DebugOn) { Write-Host "Pipe doesn't exist, gotta create it" }
 
-    $p = new-object diagnostics.process; $start = $p.startinfo
+    $p = New-Object diagnostics.process; $start = $p.startinfo
     $start.filename = "powershell.exe"
     $start.arguments = "-noprofile & '$pscommandpath' -do $pid $pipe_name`nexit `$lastexitcode"
     $start.verb = 'runas'
@@ -160,15 +206,15 @@ function try_spawn_server($pipe_name) {
 
 function client($pipe_name, $cmd) {
     $props = @{ 'pid'   =   $pid;
-                'dir'   =   (convert-path $pwd); #$pwd.Path;
+                'dir'   =   (Convert-Path $pwd);
                 'cmd'   =   $cmd; 
 				'ret'   =   0; }
-    $obj = New-Object -TypeName PSObject -Prop $props
+    $msg = New-Object -TypeName PSObject -Prop $props
 	
-	$pipe = new-object System.IO.Pipes.NamedPipeClientStream($pipe_name);
+	$pipe = New-Object System.IO.Pipes.NamedPipeClientStream($pipe_name);
 	$pipe.Connect();
-    write_obj $pipe $obj
-    $response = read_obj $pipe
+    write_msg $pipe $msg
+    $response = read_msg $pipe
 	$pipe.Dispose();
 	$response.ret
 }
