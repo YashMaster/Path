@@ -1,0 +1,21 @@
+write-output "write-output"
+write-host "write-host"
+write-error "write-error"
+write-warning "write-warning"
+write "write"
+echo "echo"
+"just quotes"
+
+"now all the about with input"
+""
+""
+$wasInput = $input
+write-host "write-host $wasInput"
+write-output "write-output $input"
+write-host "write-host $input"
+write-error "write-error $input"
+write-warning "write-warning $input"
+write "write $input"
+echo "echo $input"
+"just quotes $input"
+

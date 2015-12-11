@@ -13,7 +13,14 @@
 #Installs font (singular) to Windows. Only works for TTF fonts (untested on others).
 Function Install-Font($fontLocation)
 {
-	Write-Host "Trying to add font: $fontLocation"
+	Write-Output "Trying to add font: $fontLocation"
+	
+	if(Test-Path $fontLocation)
+	{
+		Write-Output "Font '$fontLocation' is already installed"
+		return
+	}
+	
 	if($fontLocation -eq $null -or -not (Test-Path $fontLocation))
 	{
 		Write-Error "Font location is invalid. Location is: $fontLocation"
@@ -29,10 +36,10 @@ Function Install-Font($fontLocation)
 #Makes the font available to PowerShell. @keyName needs to be "0" or "00" or "000" etc... 
 Function Add-FontToPowerShell($keyName, $fontName, $enable=$false)
 {
-	New-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Console\TrueTypeFont' -Name $keyName -Value $fontName -Force
+	$null = New-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Console\TrueTypeFont' -Name $keyName -Value $fontName -Force
 	
 	if($enable)
-		{New-ItemProperty -Path 'HKCU:\Control Panel\Desktop' -Name "FaceName" -Value $fontName -Force}
+		{$null = New-ItemProperty -Path 'HKCU:\Control Panel\Desktop' -Name "FaceName" -Value $fontName -Force}
 }
 
 Function Get-Font 

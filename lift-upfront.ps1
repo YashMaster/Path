@@ -90,6 +90,9 @@ function sudo_do($parent_pid, $pipe_name, $dir) {
         public static extern bool AttachConsole(uint dwProcessId);
         [DllImport("kernel32.dll", SetLastError = true, ExactSpelling = true)]
         public static extern bool FreeConsole();
+		
+		[DllImport("msvcrt.dll", SetLastError = true)]
+		public static extern IntPtr freopen(string Filename, string Mode, IntPtr Stream);
     }'
 	$kernel = add-type $src -passthru
 
@@ -103,11 +106,20 @@ function sudo_do($parent_pid, $pipe_name, $dir) {
 		if ($msg.cmd.Length -le 0) { if ($DebugOn) { Write-Host "cmd length <= 0" }; continue}
 		if ($msg.cmd -eq "exit") { break }
 
-		if (-not $DebugOn){ $kernel::freeconsole(); $kernel::attachconsole($parent_pid) }
+		if (-not $DebugOn)
+		{ 
+			
+		}
+		
+			$kernel::freeconsole()
+			$kernel::attachconsole($parent_pid) 
+			$kernel::freopen("CON", "r", 0);
+			$kernel::freopen("CON", "w", 1);
+			$kernel::freopen("CON", "w", 2);
 		#command execution goes here
 		#Write-Host "i'm executing a command now! cmd is: $($msg.cmd)"
-		$kernel::freeconsole();
-		$kernel::allocconsole();
+		#$kernel::freeconsole();
+		#$kernel::allocconsole();
 		$cmd = "& $($msg.cmd)"
 		Invoke-Expression $cmd
 		#& $cmd 
@@ -116,6 +128,7 @@ function sudo_do($parent_pid, $pipe_name, $dir) {
 		$msg.ret = $lastexitcode
 		#Write-Host "executed cmd: $cmd"
 		Sleep 10
+		$kernel::freeconsole()
 		if (-not $DebugOn) { $kernel::freeconsole() }
 		
 		$props = @{ 'pid'   =   $pid;

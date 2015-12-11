@@ -16,7 +16,7 @@
 #	#Right-click "Open powershell here"
 #	#Always show Right-click "Get path" 
 #
-#	#Remove WinMerge from ninite.exe
+#	#Remove WinMerge && CCCP from ninite.exe
 
 #http://jbeckwith.com/2012/11/28/5-steps-to-a-better-windows-command-line/
 
@@ -32,6 +32,7 @@ Param
 	[string]$Path 		= "$OneDrive\Path",
 	[string]$Fonts 		= "$OneDrive\Apps\Fonts"
 )
+
 $workingdir = Split-Path $MyInvocation.MyCommand.Path -Parent
 . "$workingdir\Font.ps1"  
 
@@ -55,7 +56,7 @@ Function Open-IETabs
 	$Ie = New-Object -ComObject InternetExplorer.Application
 	foreach ($Link in $Url) 
 	{
-		Write-Host "Opening: " $Link
+		Write-Host -ForegroundColor Green "Opening: $Link"
 		$Ie.Navigate2($Link, 0x10001)
 	}
 	$Ie.Visible = $true
@@ -97,8 +98,8 @@ Function Add-Path
 
 Function Get-Path() { return $env:Path }
 
-#Alternative method to [Environment]::SetEnvironmentVariable("Path", $env:Path + ";C:\Path", [EnvironmentVariableTarget]::Machine)
-Function Have-RegKey
+#Declare that a regkey must exist
+Function Declare-RegKey
 {	
 	[CmdletBinding()]
 	Param
@@ -107,117 +108,45 @@ Function Have-RegKey
 		[String]$Path,
 		[Parameter(Mandatory=$true, ValueFromPipeline=$true)]
 		[String]$Name,
-		$Value
+		[Parameter(Mandatory=$true, ValueFromPipeline=$true)]
+		$Value,
+		[String]$PropertyType = ""
 	)
 	if(-not (Test-Path $Path))
 		{New-Item -Path $Path}
-	New-ItemProperty -Force -Path $Path -Name $Name -Value $Value 
+	
+	if($PropertyType -eq "")
+		{New-ItemProperty -Force -Path $Path -Name $Name -PropertyType $PropertyType -Value $Value}
+	else 
+		{New-ItemProperty -Force -Path $Path -Name $Name -Value $Value}
 }
-############################################################################
 
-
-
-
-
-#Step -2: Set working dir
-Write-host "Setting the working directory: $Apps" -ForeGroundColor Green
-cd $Apps
-
-
-
-#Step -1.5: Copy over useful commands to @Path and add it to the %PATH%
-Write-Host "Adding to the %PATH%: $Path" -ForegroundColor Green
-Add-Path $Path
-
-
-
-#Step -1: Make sure the script is running Elevated
-if(!(Is-RunningElevated))
-	{throw "Please relaunch with elevated privileges."}
-
+#Examples
+#Declare-RegKey "HKCU:\Control Panel\Desktopz" "DelayLockIntervalz234" String
+#Declare-RegKey -Path 'HKCU:\Control Panel\Desktopz' -Name "DelayLockIntervalz23" -Value "string"
+#Declare-RegKey -Path 'HKCU:\Control Panel\Desktopz' -Name "DelayLockIntervalz2" -Value 0x00000324
+#Declare-RegKey -Path 'HKCU:\Control Panel\Desktopz' -Name "DelayLockIntervalz" -Value 0x00000324 -PropertyType String 
+Function Declare-RegKey
+{	
+	[CmdletBinding()]
+	Param
+	( 
+		[Parameter(Mandatory=$true, ValueFromPipeline=$true)]
+		[String]$Path,
+		[Parameter(Mandatory=$true, ValueFromPipeline=$true)]
+		[String]$Name,
+		[Parameter(Mandatory=$true, ValueFromPipeline=$true)]
+		$Value,
+		[String]$PropertyType = ""
+	)
+	if(-not (Test-Path $Path))
+		{New-Item -Force -Path $Path }
 	
-#Install the fonts
-$allFonts = "$Fonts\*.ttf"
-Get-ChildItem $allFonts | ForEach-Object { Install-Font $_.FullName } 
+	New-ItemProperty -Force -Path $Path -Name $Name -PropertyType $PropertyType -Value $Value
+}
 
-
-#Enable some in PowerShell
-Add-FontToPowerShell "000" "Monaco" $false
-Add-FontToPowerShell "0000" "Source Code Pro" $true
-
-
-#Step -0.75: Start installing a bunch-o-Ninite crap
-Write-Host "Installing Ninite-o-rama... including: " -ForegroundColor Green
-Write-Host -ForeGroundColor Green "--Chrome" 
-Write-Host -ForeGroundColor Green "--CCCP" 
-Write-Host -ForeGroundColor Green "--.NET 4.6" 
-Write-Host -ForeGroundColor Green "--Adobe Air" 
-Write-Host -ForeGroundColor Green "--PeaZip" 
-Write-Host -ForeGroundColor Green "--WinDirStat" 
-Write-Host -ForeGroundColor Green "--Python" 
-Write-Host -ForeGroundColor Green "--Notepad++" 
-Write-Host -ForeGroundColor Green "--WinSCP" 
-Write-Host -ForeGroundColor Green "--PuTTY" 
-Write-Host -ForeGroundColor Green "--WinMerge" 
-.\NiniteInstaller.exe
-
-
-
-#Step -0.5: Show a bunch of tabs that you'll have to manually deal with!
-Write-Host "Opening a bunch of tabs you'll have to deal with manually..." -ForegroundColor Green
-Open-IETabs `
-	("https://portal.office.com/OLS/MySoftware.aspx", `
-	"http://www.visualstudio.com/downloads/download-visual-studio-vs", `
-	"http://osg/sites/jumpstart/_layouts/15/start.aspx#/SitePages/Home.aspx", `
-	"https://desktop.github.com/")
-
-	
-	
-#Step 0: Set the ExecutionPolicy to Unrestricted for the CurrentUser and both versions of PowerShell
-Write-Host "Enabling future PowerShell scripts..." -ForegroundColor Green
-Set-ExecutionPolicy -Scope CurrentUser Unrestricted -Force 
-& $env:SystemRoot\System32\WindowsPowerShell\v1.0\PowerShell.exe -c "Set-ExecutionPolicy Unrestricted -Force"
-& $env:SystemRoot\SysWOW64\WindowsPowerShell\v1.0\PowerShell.exe -c "Set-ExecutionPolicy Unrestricted -Force"
-#Other, less pretty, solutions...
-#Set-ExecutionPolicy -Scope LocalMachine Unrestricted -Force 
-#Set-ExecutionPolicy -Scope CurrentUser Unrestricted -Force 
-#Set-ItemProperty -Path 'HKLM:\Software\Microsoft\PowerShell\1\ShellIds\Microsoft.PowerShell'-name "ExecutionPolicy" -Value "Unrestricted"
-#Set-ItemProperty -Path 'HKLM:\Software\WOW6432Node\Microsoft\PowerShell\1\ShellIds\Microsoft.PowerShell'-name "ExecutionPolicy" -Value "Unrestricted"
-
-
-
-#Step 1: Enable Remote Desktop
-Write-Host "Enabling Remote Desktop..." -ForegroundColor Green
-New-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0 -Force
-Enable-NetFirewallRule -DisplayGroup "Remote Desktop"  
-New-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 0 -Force
-
-
-
-#Step 2: Enable Delaylock
-Write-Host "Enabling DelayLock..." -ForegroundColor Green
-New-ItemProperty -Path 'HKCU:\Control Panel\Desktop' -Name "DelayLockInterval" -Value 0x00000324 -PropertyType DWORD -Force
-New-ItemProperty -Path 'HKLM:\Software\Policies\Microsoft\Windows\System' -Name "AllowDomainDelayLock" -Value 0x01 -PropertyType DWORD -Force
-
-
-#Step 2.25: Disable Aero-Shake
-Write-Host "Disabling Aero-Shake..." -ForegroundColor Green
-Have-RegKey -Path 'HKCU:\Software\Policies\Microsoft\Windows\Explorer' -Name "NoWindowMinimizingShortcuts" -Value 00000001
-
-#Step 2.5: Install Notification Center re-map
-Write-Host "Installing NotificationCenterSanity..." -ForegroundColor Green
-copy ".\WindowsTweaks\NotificationCenterSanity.exe" "$env:AppData\Microsoft\Windows\Start Menu\Programs\Startup\NotificationCenterSanity.exe"
-& "$env:AppData\Microsoft\Windows\Start Menu\Programs\Startup\NotificationCenterSanity.exe"
-
-#Step 3: Install Sound+Brightness re-map
-Write-Host "Installing SoundBrightness re-map..." -ForegroundColor Green
-copy ".\WindowsTweaks\AutoHotKey\SoundBrightness.exe" "$env:AppData\Microsoft\Windows\Start Menu\Programs\Startup\SoundBrightness.exe"
-& "$env:AppData\Microsoft\Windows\Start Menu\Programs\Startup\SoundBrightness.exe"
-
-
-#Use this to declare ps64
+#Gets path to the 64 bit version of PowerShell
 #For more details see: http://karlprosser.com/coder/2011/11/04/calling-powershell-64bit-from-32bit-and-visa-versa/
-Write-Host "Installing Hyper-V and TelnetClient..." -ForegroundColor Green
 Function Get-Ps64($emptyIfAlready64=$false)
 {		
 	if (-not [Environment]::Is64BitProcess)
@@ -228,10 +157,128 @@ Function Get-Ps64($emptyIfAlready64=$false)
 		
 	return "$env:windir\System32\WindowsPowerShell\v1.0\powershell.exe"
 }
-$ps64 = Get-Ps64
-& $ps64 Enable-WindowsOptionalFeature -Online -FeatureName TelnetClient -All
-& $ps64 Enable-WindowsOptionalFeature -Online -FeatureName Microsoft-Hyper-V -All
 
+#Checks if a command exists
+#http://blogs.technet.com/b/heyscriptingguy/archive/2013/02/19/use-a-powershell-function-to-see-if-a-command-exists.aspx
+Function Test-CommandExists
+{
+	Param ($command)
+	$oldPreference = $ErrorActionPreference
+	$ErrorActionPreference = 'stop'
+	try {if(Get-Command $command){"$command exists"}}
+	catch {"$command does not exist"}
+	finally {$ErrorActionPreference=$oldPreference}
+}
+
+############################################################################
+
+Write-Host -ForegroundColor Green "Making sure we're elevated..." 
+if(!(Is-RunningElevated))
+	{throw "Please relaunch with elevated privileges."}
+
+	
+Write-Host -ForegroundColor Green "Setting the working directory: $Apps" 
+cd $Apps
+
+Write-Host -ForegroundColor Green "Adding to %PATH%: $Path" 
+$null = Add-Path $Path
+
+	
+Write-Host -ForegroundColor Green "Installing fonts..." 
+$allFonts = "$Fonts\*.ttf"
+Get-ChildItem $allFonts | ForEach-Object { Install-Font $_.FullName } 
+
+
+Write-Host -ForegroundColor Green "Adding fonts to PowerShell..."
+$null = Add-FontToPowerShell "000" "Monaco" $true
+$null = Add-FontToPowerShell "0000" "Source Code Pro" $false
+
+
+Write-Host -ForegroundColor Green "Installing Ninite-o-rama..." 
+Write-Host -ForegroundColor Green  "--Chrome" 
+Write-Host -ForegroundColor Green  "--Adobe Air" 
+Write-Host -ForegroundColor Green  "--PeaZip" 
+Write-Host -ForegroundColor Green  "--WinDirStat" 
+Write-Host -ForegroundColor Green  "--Python" 
+Write-Host -ForegroundColor Green  "--Notepad++" 
+Write-Host -ForegroundColor Green  "--WinSCP" 
+Write-Host -ForegroundColor Green  "--PuTTY" 
+.\NiniteInstaller.exe
+
+
+Write-Host -ForegroundColor Green "Opening a bunch of tabs you'll have to deal with manually..." 
+Open-IETabs `
+	("https://portal.office.com/OLS/MySoftware.aspx", `
+	"http://www.visualstudio.com/downloads/download-visual-studio-vs", `
+	"http://osg/sites/jumpstart/_layouts/15/start.aspx#/SitePages/Home.aspx", `
+	"https://desktop.github.com/")
+
+	
+Write-Host -ForegroundColor Green "Enabling future PowerShell scripts..." 
+Set-ExecutionPolicy -Scope CurrentUser Unrestricted -Force 
+& $env:SystemRoot\System32\WindowsPowerShell\v1.0\PowerShell.exe -c "Set-ExecutionPolicy Unrestricted -Force"
+& $env:SystemRoot\SysWOW64\WindowsPowerShell\v1.0\PowerShell.exe -c "Set-ExecutionPolicy Unrestricted -Force"
+#Other, less pretty, solutions...
+#Set-ExecutionPolicy -Scope LocalMachine Unrestricted -Force 
+#Set-ExecutionPolicy -Scope CurrentUser Unrestricted -Force 
+#Set-ItemProperty -Path 'HKLM:\Software\Microsoft\PowerShell\1\ShellIds\Microsoft.PowerShell'-name "ExecutionPolicy" -Value "Unrestricted"
+#Set-ItemProperty -Path 'HKLM:\Software\WOW6432Node\Microsoft\PowerShell\1\ShellIds\Microsoft.PowerShell'-name "ExecutionPolicy" -Value "Unrestricted"
+
+
+Write-Host -ForegroundColor Green  "Enabling Remote Desktop..." 
+$null = Declare-RegKey -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0x00
+$null = Declare-RegKey -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 0x00
+$null = Enable-NetFirewallRule -DisplayGroup "Remote Desktop"  
+
+
+Write-Host -ForegroundColor Green "Enabling DelayLock..." 
+$null = Declare-RegKey -Path 'HKCU:\Control Panel\Desktop' -Name "DelayLockInterval" -Value 0x0324
+$null = Declare-RegKey -Path 'HKLM:\Software\Policies\Microsoft\Windows\System' -Name "AllowDomainDelayLock" -Value 0x01
+
+
+Write-Host -ForegroundColor Green "Disabling Aero-Shake..." 
+$null = Declare-RegKey -Path 'HKCU:\Software\Policies\Microsoft\Windows\Explorer' -Name "NoWindowMinimizingShortcuts" -Value 0x01
+
+
+Write-Host -ForegroundColor Green "Disabling Lockscreen..." 
+$null = Declare-RegKey -Path 'HKLM:\Software\Policies\Microsoft\Windows\Personalization' -Name "NoLockScreen" -Value 0x01
+
+Write-Host -ForegroundColor Green "Configuring Windows Explorer..."
+$null = Declare-RegKey -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced' -Name 'Hidden' -Value 0x01
+$null = Declare-RegKey -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced' -Name 'HideFileExt' -Value 0x00
+$null = Declare-RegKey -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced' -Name 'SnapAssist' -Value 0x00
+
+Write-Host -ForegroundColor Green "Getting rid of BSDR (Blocking Shutdown Resolver)..."
+#Automatically end user services when the user logs off or shuts down the computer
+$null = Declare-RegKey -Path 'HKCU:\Control Panel\Desktop' -Name 'AutoEndTasks' -Value 0x01
+#Delay before killing user processes after click on "End Task" button in Task Manager
+$null = Declare-RegKey -Path 'HKCU:\Control Panel\Desktop' -Name 'HungAppTimeout' -Value 1000
+#Reduces system waiting time before killing user processes on logoff / shutdown
+$null = Declare-RegKey -Path 'HKCU:\Control Panel\Desktop' -Name 'WaitToKillAppTimeout' -Value 10000
+#Reduces system waiting time before killing not responding services
+$null = Declare-RegKey -Path 'HKCU:\Control Panel\Desktop' -Name 'LowLevelHooksTimeout' -Value 3000
+
+
+Write-Host -ForegroundColor Green "Installing NotificationCenterSanity..." 
+Get-Process | ? {$_ -match "NotificationCenterSanity"} | kill
+copy ".\WindowsTweaks\NotificationCenterSanity.exe" "$env:AppData\Microsoft\Windows\Start Menu\Programs\Startup\NotificationCenterSanity.exe"
+& "$env:AppData\Microsoft\Windows\Start Menu\Programs\Startup\NotificationCenterSanity.exe"
+
+
+Write-Host -ForegroundColor Green "Installing SoundBrightness re-map..." 
+Get-Process | ? {$_ -match "SoundBrightness"} | kill
+copy ".\WindowsTweaks\AutoHotKey\SoundBrightness.exe" "$env:AppData\Microsoft\Windows\Start Menu\Programs\Startup\SoundBrightness.exe"
+& "$env:AppData\Microsoft\Windows\Start Menu\Programs\Startup\SoundBrightness.exe"
+
+
+Write-Host -ForegroundColor Green "Installing Hyper-V and TelnetClient..." 
+$ps64 = Get-Ps64
+$null = & $ps64 Enable-WindowsOptionalFeature -Online -FeatureName TelnetClient -All
+$null = & $ps64 Enable-WindowsOptionalFeature -Online -FeatureName Microsoft-Hyper-V -All
+
+
+Write-Host -ForegroundColor Green  "Disabling the stupid WindowsError Reporting prompt..."
+$null = Disable-WindowsErrorReporting
 
 
 #Install-Package ConEmu -Force
@@ -243,7 +290,11 @@ $ps64 = Get-Ps64
 #install-package -provider chocolatey -force cmder
 
 #Install Scoop
-iex (new-object net.webclient).downloadstring('https://get.scoop.sh')
+Write-Host -ForegroundColor Green  "Installing scoop..."
+if(-not (Test-CommandExists scoop))
+	{iex (new-object net.webclient).downloadstring('https://get.scoop.sh')}
+else 
+	{scoop update}
 #scoop install git
 scoop install openssh
 [environment]::setenvironmentvariable('GIT_SSH', (resolve-path (scoop which ssh)), 'USER')
@@ -251,11 +302,10 @@ scoop bucket add extras
 scoop install conemu
 
 
-
 #Woot, you're done! 
-Write-Host "Done! Your computer is now awesome." -ForegroundColor Green
-Write-Host "You should definitely restart now!" -ForegroundColor Green
-Write-Host "You should definitely restart now!" -ForegroundColor Green
+Write-Host -ForegroundColor Green "Done! Your computer is now awesome." 
+Write-Host -ForegroundColor Green "You should definitely restart now!" 
+Write-Host -ForegroundColor Green "You should definitely restart now!" 
 
 
 
