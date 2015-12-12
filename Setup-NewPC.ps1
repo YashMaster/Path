@@ -281,15 +281,6 @@ Write-Host -ForegroundColor Green  "Disabling the stupid WindowsError Reporting 
 $null = Disable-WindowsErrorReporting
 
 
-#Install-Package ConEmu -Force
-#Install-Package git -params '"/GitAndUnixToolsOnPath /NoAutoCrlf"'.
-#Get-PackageProvider -Name chocolatey -Force -ForceBootstrap
-#Install-Package poshgit -Force
-#Install-Package vim -Force
-#Install-Package ConEmu -Force
-#install-package -provider chocolatey -force cmder
-
-#Install Scoop
 Write-Host -ForegroundColor Green  "Installing scoop..."
 if(-not (Test-CommandExists scoop))
 	{iex (new-object net.webclient).downloadstring('https://get.scoop.sh')}
@@ -302,7 +293,15 @@ scoop bucket add extras
 scoop install conemu
 
 
-#Woot, you're done! 
+#Install-Package ConEmu -Force
+#Install-Package git -params '"/GitAndUnixToolsOnPath /NoAutoCrlf"'.
+#Get-PackageProvider -Name chocolatey -Force -ForceBootstrap
+#Install-Package poshgit -Force
+#Install-Package vim -Force
+#Install-Package ConEmu -Force
+#install-package -provider chocolatey -force cmder
+
+
 Write-Host -ForegroundColor Green "Done! Your computer is now awesome." 
 Write-Host -ForegroundColor Green "You should definitely restart now!" 
 Write-Host -ForegroundColor Green "You should definitely restart now!" 
