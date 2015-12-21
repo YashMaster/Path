@@ -17,9 +17,8 @@
 #	-Calling lift from within a script will not reprompt for UAC...
 #	-Std in/out/error redirection and piping don't work at all...
 #	-Cannot ctrl+C out of it?
-#	-$? does not work :( 
 
-$DebugOn = $false
+$DebugOn = $true
 $GracePeriod = 1000 * 60 * 15 #15 minute grace period by default. 
 $Source = @"
 using System;

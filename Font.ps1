@@ -11,15 +11,9 @@
 #	Menlo:							https://github.com/hbin/top-programming-fonts
 
 #Installs font (singular) to Windows. Only works for TTF fonts (untested on others).
-Function Install-Font($fontLocation)
+Function Install-Font($fontLocation, $fontName)
 {
 	Write-Output "Trying to add font: $fontLocation"
-	
-	if(Test-Path $fontLocation)
-	{
-		Write-Output "Font '$fontLocation' is already installed"
-		return
-	}
 	
 	if($fontLocation -eq $null -or -not (Test-Path $fontLocation))
 	{
@@ -30,6 +24,14 @@ Function Install-Font($fontLocation)
 	$FONTS = 0x14
 	$objShell = New-Object -ComObject Shell.Application
 	$objFolder = $objShell.Namespace($FONTS)
+	
+	$filename = [System.IO.Path]::GetFileName($fontLocation)
+	$targetLocation = Join-Path $objFolder.Self.Path $filename
+	if(Test-Path $targetLocation)
+	{
+		Write-Output "Font '$fontLocation' is already installed"
+		return
+	}
 	$objFolder.CopyHere($fontLocation)
 }
 

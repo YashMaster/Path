@@ -15,9 +15,12 @@
 #	#Configure good File Explorer "Quick-Access" links
 #	#Right-click "Open powershell here"
 #	#Always show Right-click "Get path" 
+#	#add file associations
 #
-#	#Remove WinMerge && CCCP from ninite.exe
-
+#   #Disable snap assist
+#   #Grant user permission for RDP acccess
+#   #Three finger tap == notificationcenter 
+#
 #http://jbeckwith.com/2012/11/28/5-steps-to-a-better-windows-command-line/
 
 
@@ -160,16 +163,35 @@ Function Get-Ps64($emptyIfAlready64=$false)
 
 #Checks if a command exists
 #http://blogs.technet.com/b/heyscriptingguy/archive/2013/02/19/use-a-powershell-function-to-see-if-a-command-exists.aspx
-Function Test-CommandExists
+Function Test-CommandExists($command)
 {
-	Param ($command)
 	$oldPreference = $ErrorActionPreference
 	$ErrorActionPreference = 'stop'
-	try {if(Get-Command $command){"$command exists"}}
-	catch {"$command does not exist"}
+	$ret = $false;
+	try {if(Get-Command $command){$ret = $true}}
+	catch {$ret = $false}
 	finally {$ErrorActionPreference=$oldPreference}
+	$ret
 }
 
+#Sets execution policy to 'Unrestricted'
+Function Remove-ExecutionPolicy()
+{
+	$oldPreference = $ErrorActionPreference
+	$ErrorActionPreference = 'SilentlyContinue'
+	try 
+	{
+		Set-ExecutionPolicy -Scope CurrentUser Unrestricted -Force 
+		& $env:SystemRoot\System32\WindowsPowerShell\v1.0\PowerShell.exe -c "Set-ExecutionPolicy Unrestricted -Force"
+		& $env:SystemRoot\SysWOW64\WindowsPowerShell\v1.0\PowerShell.exe -c "Set-ExecutionPolicy Unrestricted -Force"
+		#Other, less pretty, solutions...
+		#Set-ExecutionPolicy -Scope LocalMachine Unrestricted -Force 
+		#Set-ExecutionPolicy -Scope CurrentUser Unrestricted -Force 
+		#Set-ItemProperty -Path 'HKLM:\Software\Microsoft\PowerShell\1\ShellIds\Microsoft.PowerShell'-name "ExecutionPolicy" -Value "Unrestricted"
+		#Set-ItemProperty -Path 'HKLM:\Software\WOW6432Node\Microsoft\PowerShell\1\ShellIds\Microsoft.PowerShell'-name "ExecutionPolicy" -Value "Unrestricted"
+	}
+	finally { $ErrorActionPreference=$oldPreference }
+}
 ############################################################################
 
 Write-Host -ForegroundColor Green "Making sure we're elevated..." 
@@ -186,7 +208,7 @@ $null = Add-Path $Path
 	
 Write-Host -ForegroundColor Green "Installing fonts..." 
 $allFonts = "$Fonts\*.ttf"
-Get-ChildItem $allFonts | ForEach-Object { Install-Font $_.FullName } 
+Get-ChildItem $allFonts | ForEach-Object { Install-Font $_.FullName $_} 
 
 
 Write-Host -ForegroundColor Green "Adding fonts to PowerShell..."
@@ -215,14 +237,7 @@ Open-IETabs `
 
 	
 Write-Host -ForegroundColor Green "Enabling future PowerShell scripts..." 
-Set-ExecutionPolicy -Scope CurrentUser Unrestricted -Force 
-& $env:SystemRoot\System32\WindowsPowerShell\v1.0\PowerShell.exe -c "Set-ExecutionPolicy Unrestricted -Force"
-& $env:SystemRoot\SysWOW64\WindowsPowerShell\v1.0\PowerShell.exe -c "Set-ExecutionPolicy Unrestricted -Force"
-#Other, less pretty, solutions...
-#Set-ExecutionPolicy -Scope LocalMachine Unrestricted -Force 
-#Set-ExecutionPolicy -Scope CurrentUser Unrestricted -Force 
-#Set-ItemProperty -Path 'HKLM:\Software\Microsoft\PowerShell\1\ShellIds\Microsoft.PowerShell'-name "ExecutionPolicy" -Value "Unrestricted"
-#Set-ItemProperty -Path 'HKLM:\Software\WOW6432Node\Microsoft\PowerShell\1\ShellIds\Microsoft.PowerShell'-name "ExecutionPolicy" -Value "Unrestricted"
+Remove-ExecutionPolicy
 
 
 Write-Host -ForegroundColor Green  "Enabling Remote Desktop..." 
@@ -248,15 +263,15 @@ $null = Declare-RegKey -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Ex
 $null = Declare-RegKey -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced' -Name 'HideFileExt' -Value 0x00
 $null = Declare-RegKey -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced' -Name 'SnapAssist' -Value 0x00
 
-Write-Host -ForegroundColor Green "Getting rid of BSDR (Blocking Shutdown Resolver)..."
+#Write-Host -ForegroundColor Green "Getting rid of BSDR (Blocking Shutdown Resolver)..."
 #Automatically end user services when the user logs off or shuts down the computer
-$null = Declare-RegKey -Path 'HKCU:\Control Panel\Desktop' -Name 'AutoEndTasks' -Value 0x01
+#$null = Declare-RegKey -Path 'HKCU:\Control Panel\Desktop' -Name 'AutoEndTasks' -Value 0x01
 #Delay before killing user processes after click on "End Task" button in Task Manager
-$null = Declare-RegKey -Path 'HKCU:\Control Panel\Desktop' -Name 'HungAppTimeout' -Value 1000
+#$null = Declare-RegKey -Path 'HKCU:\Control Panel\Desktop' -Name 'HungAppTimeout' -Value 1000
 #Reduces system waiting time before killing user processes on logoff / shutdown
-$null = Declare-RegKey -Path 'HKCU:\Control Panel\Desktop' -Name 'WaitToKillAppTimeout' -Value 10000
+#$null = Declare-RegKey -Path 'HKCU:\Control Panel\Desktop' -Name 'WaitToKillAppTimeout' -Value 10000
 #Reduces system waiting time before killing not responding services
-$null = Declare-RegKey -Path 'HKCU:\Control Panel\Desktop' -Name 'LowLevelHooksTimeout' -Value 3000
+#$null = Declare-RegKey -Path 'HKCU:\Control Panel\Desktop' -Name 'LowLevelHooksTimeout' -Value 3000
 
 
 Write-Host -ForegroundColor Green "Installing NotificationCenterSanity..." 
@@ -277,8 +292,14 @@ $null = & $ps64 Enable-WindowsOptionalFeature -Online -FeatureName TelnetClient 
 $null = & $ps64 Enable-WindowsOptionalFeature -Online -FeatureName Microsoft-Hyper-V -All
 
 
-Write-Host -ForegroundColor Green  "Disabling the stupid WindowsError Reporting prompt..."
+Write-Host -ForegroundColor Green "Disabling the stupid WindowsError Reporting prompt..."
 $null = Disable-WindowsErrorReporting
+
+Write-Host -ForegroundColor Green "Disabling Adaptive Brightness..."
+Stop-Service SensrSvc
+Set-Service SensrSvc -StartupType Disabled
+#http://supportishere.com/two-scripts-to-disabled-adaptive-display-brightness-ambient-light-sensor-in-windows-78/
+
 
 
 Write-Host -ForegroundColor Green  "Installing scoop..."
@@ -286,7 +307,7 @@ if(-not (Test-CommandExists scoop))
 	{iex (new-object net.webclient).downloadstring('https://get.scoop.sh')}
 else 
 	{scoop update}
-#scoop install git
+scoop install git
 scoop install openssh
 [environment]::setenvironmentvariable('GIT_SSH', (resolve-path (scoop which ssh)), 'USER')
 scoop bucket add extras
@@ -301,6 +322,10 @@ scoop install conemu
 #Install-Package ConEmu -Force
 #install-package -provider chocolatey -force cmder
 
+
+
+#Install flux
+#choco install f.lux
 
 Write-Host -ForegroundColor Green "Done! Your computer is now awesome." 
 Write-Host -ForegroundColor Green "You should definitely restart now!" 
