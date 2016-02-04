@@ -16,16 +16,19 @@
 #	#Right-click "Open powershell here"
 #	#Always show Right-click "Get path" 
 #	#add file associations
+#	#Powershell: enable quickedit mode
+#	#Powershell: filter paste
+#	#Powershell: enable line wrapping
+#	#Enable PIN password provider
 #
-#   #Disable snap assist
 #   #Grant user permission for RDP acccess
 #   #Three finger tap == notificationcenter 
 #
-#http://jbeckwith.com/2012/11/28/5-steps-to-a-better-windows-command-line/
 
-
-
-
+#Get rid of these messages...
+# "Outlook is not responding"
+# "Windows can try to recover your information"
+# "Close the program"
 
 [CmdletBinding()]
 Param 
@@ -263,6 +266,12 @@ $null = Declare-RegKey -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Ex
 $null = Declare-RegKey -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced' -Name 'HideFileExt' -Value 0x00
 $null = Declare-RegKey -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced' -Name 'SnapAssist' -Value 0x00
 
+
+
+Write-Host -ForegroundColor Green "Enabling Developer Mode..."
+#$null = Declare-RegKey -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\AppModelUnlock' -Name 'AllowAllTrustedApps' -Value 0x01
+$null = Declare-RegKey -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\AppModelUnlock' -Name 'AllowDevelopmentWithoutDevLicense' -Value 0x01
+
 #Write-Host -ForegroundColor Green "Getting rid of BSDR (Blocking Shutdown Resolver)..."
 #Automatically end user services when the user logs off or shuts down the computer
 #$null = Declare-RegKey -Path 'HKCU:\Control Panel\Desktop' -Name 'AutoEndTasks' -Value 0x01
@@ -286,10 +295,10 @@ copy ".\WindowsTweaks\AutoHotKey\SoundBrightness.exe" "$env:AppData\Microsoft\Wi
 & "$env:AppData\Microsoft\Windows\Start Menu\Programs\Startup\SoundBrightness.exe"
 
 
-Write-Host -ForegroundColor Green "Installing Hyper-V and TelnetClient..." 
+Write-Host -ForegroundColor Green "Installing Hyper-V and TelnetClient... (if you're asked to reboot, don't do it!)" 
 $ps64 = Get-Ps64
-$null = & $ps64 Enable-WindowsOptionalFeature -Online -FeatureName TelnetClient -All
-$null = & $ps64 Enable-WindowsOptionalFeature -Online -FeatureName Microsoft-Hyper-V -All
+$null = & $ps64 Enable-WindowsOptionalFeature -NoRestart -Online -FeatureName TelnetClient -All
+$null = & $ps64 Enable-WindowsOptionalFeature -NoRestart -Online -FeatureName Microsoft-Hyper-V -All
 
 
 Write-Host -ForegroundColor Green "Disabling the stupid WindowsError Reporting prompt..."
