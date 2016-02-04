@@ -19,7 +19,7 @@
 #	#Powershell: enable quickedit mode
 #	#Powershell: filter paste
 #	#Powershell: enable line wrapping
-#	#Enable PIN password provider
+#	#Enable NGC PIN password provider
 #
 #   #Grant user permission for RDP acccess
 #   #Three finger tap == notificationcenter 
@@ -236,7 +236,8 @@ Open-IETabs `
 	("https://portal.office.com/OLS/MySoftware.aspx", `
 	"http://www.visualstudio.com/downloads/download-visual-studio-vs", `
 	"http://osg/sites/jumpstart/_layouts/15/start.aspx#/SitePages/Home.aspx", `
-	"https://desktop.github.com/")
+	"https://desktop.github.com/",`
+	"http://shop.gopro.com/softwareandapp/gopro-studio/GoPro-Studio.html")
 
 	
 Write-Host -ForegroundColor Green "Enabling future PowerShell scripts..." 
