@@ -184,9 +184,10 @@ Function Remove-ExecutionPolicy()
 	$ErrorActionPreference = 'SilentlyContinue'
 	try 
 	{
-		Set-ExecutionPolicy -Scope CurrentUser Unrestricted -Force 
-		& $env:SystemRoot\System32\WindowsPowerShell\v1.0\PowerShell.exe -c "Set-ExecutionPolicy Unrestricted -Force"
-		& $env:SystemRoot\SysWOW64\WindowsPowerShell\v1.0\PowerShell.exe -c "Set-ExecutionPolicy Unrestricted -Force"
+		& $env:SystemRoot\System32\WindowsPowerShell\v1.0\PowerShell.exe -c "Set-ExecutionPolicy Bypass -Force"
+		& $env:SystemRoot\SysWOW64\WindowsPowerShell\v1.0\PowerShell.exe -c "Set-ExecutionPolicy Bypass -Force"
+		Set-ExecutionPolicy -Scope CurrentUser Bypass -Force
+
 		#Other, less pretty, solutions...
 		#Set-ExecutionPolicy -Scope LocalMachine Unrestricted -Force 
 		#Set-ExecutionPolicy -Scope CurrentUser Unrestricted -Force 
@@ -221,10 +222,11 @@ $null = Add-FontToPowerShell "0000" "Source Code Pro" $false
 
 Write-Host -ForegroundColor Green "Installing Ninite-o-rama..." 
 Write-Host -ForegroundColor Green  "--Chrome" 
-Write-Host -ForegroundColor Green  "--Adobe Air" 
-Write-Host -ForegroundColor Green  "--PeaZip" 
+#Write-Host -ForegroundColor Green  "--Adobe Air" 
+#Write-Host -ForegroundColor Green  "--PeaZip" 
+Write-Host -ForegroundColor Green  "--7zip" 
 Write-Host -ForegroundColor Green  "--WinDirStat" 
-Write-Host -ForegroundColor Green  "--Python" 
+#Write-Host -ForegroundColor Green  "--Python" 
 Write-Host -ForegroundColor Green  "--Notepad++" 
 Write-Host -ForegroundColor Green  "--WinSCP" 
 Write-Host -ForegroundColor Green  "--PuTTY" 
@@ -237,6 +239,7 @@ Open-IETabs `
 	"http://www.visualstudio.com/downloads/download-visual-studio-vs", `
 	"http://osg/sites/jumpstart/_layouts/15/start.aspx#/SitePages/Home.aspx", `
 	"https://desktop.github.com/",`
+	"http://ejie.me/",`
 	"http://shop.gopro.com/softwareandapp/gopro-studio/GoPro-Studio.html")
 
 	
@@ -254,6 +257,9 @@ Write-Host -ForegroundColor Green "Enabling DelayLock..."
 $null = Declare-RegKey -Path 'HKCU:\Control Panel\Desktop' -Name "DelayLockInterval" -Value 0x0324
 $null = Declare-RegKey -Path 'HKLM:\Software\Policies\Microsoft\Windows\System' -Name "AllowDomainDelayLock" -Value 0x01
 
+Write-Host -ForegroundColor Green "Enabling ARSO..." 
+$null = Declare-RegKey -Path 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon' -Name "ARSOUserConsent" -Value 0x00000001
+$null = Declare-RegKey -Path 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon' -Name "TBALIgnorePolicyTestHook" -Value 0x00000001
 
 Write-Host -ForegroundColor Green "Disabling Aero-Shake..." 
 $null = Declare-RegKey -Path 'HKCU:\Software\Policies\Microsoft\Windows\Explorer' -Name "NoWindowMinimizingShortcuts" -Value 0x01
