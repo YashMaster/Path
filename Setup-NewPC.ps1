@@ -19,7 +19,6 @@
 #	#Powershell: enable quickedit mode
 #	#Powershell: filter paste
 #	#Powershell: enable line wrapping
-#	#Enable NGC PIN password provider
 #
 #   #Grant user permission for RDP acccess
 #   #Three finger tap == notificationcenter 
@@ -104,30 +103,7 @@ Function Add-Path
 
 Function Get-Path() { return $env:Path }
 
-#Declare that a regkey must exist
-Function Declare-RegKey
-{	
-	[CmdletBinding()]
-	Param
-	( 
-		[Parameter(Mandatory=$true, ValueFromPipeline=$true)]
-		[String]$Path,
-		[Parameter(Mandatory=$true, ValueFromPipeline=$true)]
-		[String]$Name,
-		[Parameter(Mandatory=$true, ValueFromPipeline=$true)]
-		$Value,
-		[String]$PropertyType = ""
-	)
-	if(-not (Test-Path $Path))
-		{New-Item -Path $Path}
-	
-	if($PropertyType -eq "")
-		{New-ItemProperty -Force -Path $Path -Name $Name -PropertyType $PropertyType -Value $Value}
-	else 
-		{New-ItemProperty -Force -Path $Path -Name $Name -Value $Value}
-}
-
-#Examples
+#Declare that a regkey must exist #Examples
 #Declare-RegKey "HKCU:\Control Panel\Desktopz" "DelayLockIntervalz234" String
 #Declare-RegKey -Path 'HKCU:\Control Panel\Desktopz' -Name "DelayLockIntervalz23" -Value "string"
 #Declare-RegKey -Path 'HKCU:\Control Panel\Desktopz' -Name "DelayLockIntervalz2" -Value 0x00000324
@@ -145,11 +121,16 @@ Function Declare-RegKey
 		$Value,
 		[String]$PropertyType = ""
 	)
+
 	if(-not (Test-Path $Path))
-		{New-Item -Force -Path $Path }
+		{New-Item -Path $Path}
 	
-	New-ItemProperty -Force -Path $Path -Name $Name -PropertyType $PropertyType -Value $Value
+	if($PropertyType -ne "")
+		{New-ItemProperty -Force -Path $Path -Name $Name -PropertyType $PropertyType -Value $Value}
+	else 
+		{New-ItemProperty -Force -Path $Path -Name $Name -Value $Value}
 }
+
 
 #Gets path to the 64 bit version of PowerShell
 #For more details see: http://karlprosser.com/coder/2011/11/04/calling-powershell-64bit-from-32bit-and-visa-versa/
@@ -222,11 +203,8 @@ $null = Add-FontToPowerShell "0000" "Source Code Pro" $false
 
 Write-Host -ForegroundColor Green "Installing Ninite-o-rama..." 
 Write-Host -ForegroundColor Green  "--Chrome" 
-#Write-Host -ForegroundColor Green  "--Adobe Air" 
-#Write-Host -ForegroundColor Green  "--PeaZip" 
 Write-Host -ForegroundColor Green  "--7zip" 
 Write-Host -ForegroundColor Green  "--WinDirStat" 
-#Write-Host -ForegroundColor Green  "--Python" 
 Write-Host -ForegroundColor Green  "--Notepad++" 
 Write-Host -ForegroundColor Green  "--WinSCP" 
 Write-Host -ForegroundColor Green  "--PuTTY" 
@@ -253,13 +231,17 @@ $null = Declare-RegKey -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Se
 $null = Enable-NetFirewallRule -DisplayGroup "Remote Desktop"  
 
 
-Write-Host -ForegroundColor Green "Enabling DelayLock..." 
+Write-Host -ForegroundColor Green "Enabling DelayLock, PIN, and Secure-desktop-less UAC..." 
 $null = Declare-RegKey -Path 'HKCU:\Control Panel\Desktop' -Name "DelayLockInterval" -Value 0x0324
 $null = Declare-RegKey -Path 'HKLM:\Software\Policies\Microsoft\Windows\System' -Name "AllowDomainDelayLock" -Value 0x01
+$null = Declare-RegKey -Path 'HKLM:\Software\Policies\Microsoft\Windows\System' -Name "AllowDomainPINLogon" -Value 0x01
+$null = Declare-RegKey -Path 'HKLM:\Software\Microsoft\Windows\CurrentVersion\Policies\System' -Name "PromptOnSecureDesktop" -Value 0x00
+
 
 Write-Host -ForegroundColor Green "Enabling ARSO..." 
 $null = Declare-RegKey -Path 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon' -Name "ARSOUserConsent" -Value 0x00000001
 $null = Declare-RegKey -Path 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon' -Name "TBALIgnorePolicyTestHook" -Value 0x00000001
+
 
 Write-Host -ForegroundColor Green "Disabling Aero-Shake..." 
 $null = Declare-RegKey -Path 'HKCU:\Software\Policies\Microsoft\Windows\Explorer' -Name "NoWindowMinimizingShortcuts" -Value 0x01
@@ -268,16 +250,30 @@ $null = Declare-RegKey -Path 'HKCU:\Software\Policies\Microsoft\Windows\Explorer
 Write-Host -ForegroundColor Green "Disabling Lockscreen..." 
 $null = Declare-RegKey -Path 'HKLM:\Software\Policies\Microsoft\Windows\Personalization' -Name "NoLockScreen" -Value 0x01
 
-Write-Host -ForegroundColor Green "Configuring Windows Explorer..."
+
+Write-Host -ForegroundColor Green "Configuring Windows Explorer and Shell..."
 $null = Declare-RegKey -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced' -Name 'Hidden' -Value 0x01
 $null = Declare-RegKey -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced' -Name 'HideFileExt' -Value 0x00
 $null = Declare-RegKey -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced' -Name 'SnapAssist' -Value 0x00
+# Change Explorer home screen back to "This PC"
+$null = Declare-RegKey -Path 'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\Advanced' -Name 'LaunchTo' -Value 0x01
+# Change it back to "Quick Access" (Windows 10 default)
+#$null = Declare-RegKey -Path 'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\Advanced' -Name 'LaunchTo' -Value -0x02
+$null = Declare-RegKey -Path 'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer' -Name 'ShowRecent' -Value 0x00
+$null = Declare-RegKey -Path 'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer' -Name 'ShowFrequent' -Value 0x00
+$null = Declare-RegKey -Path 'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\Advanced' -Name 'DontPrettyPath' -Value 0x01
 
+
+Write-Host -ForegroundColor Green "Disabling SmartScreen... Disable sending Store app URLs to SmartScreen"
+$null = Declare-RegKey -Path 'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\AppHost' -Name 'EnableWebContentEvaluation' -Value 0x00
+$null = Declare-RegKey -Path 'HKLM:\Software\Microsoft\Windows\CurrentVersion\Explorer' -Name 'SmartScreenEnabled' -Value 'Off'
 
 
 Write-Host -ForegroundColor Green "Enabling Developer Mode..."
 #$null = Declare-RegKey -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\AppModelUnlock' -Name 'AllowAllTrustedApps' -Value 0x01
 $null = Declare-RegKey -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\AppModelUnlock' -Name 'AllowDevelopmentWithoutDevLicense' -Value 0x01
+
+
 
 #Write-Host -ForegroundColor Green "Getting rid of BSDR (Blocking Shutdown Resolver)..."
 #Automatically end user services when the user logs off or shuts down the computer
@@ -290,16 +286,20 @@ $null = Declare-RegKey -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Ap
 #$null = Declare-RegKey -Path 'HKCU:\Control Panel\Desktop' -Name 'LowLevelHooksTimeout' -Value 3000
 
 
-Write-Host -ForegroundColor Green "Installing NotificationCenterSanity..." 
-Get-Process | ? {$_ -match "NotificationCenterSanity"} | kill
-copy ".\WindowsTweaks\NotificationCenterSanity.exe" "$env:AppData\Microsoft\Windows\Start Menu\Programs\Startup\NotificationCenterSanity.exe"
-& "$env:AppData\Microsoft\Windows\Start Menu\Programs\Startup\NotificationCenterSanity.exe"
+#Write-Host -ForegroundColor Green "Disabling Web Search from Start Menu..."
+#$null = Declare-RegKey -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\Windows Search' -Name 'ConnectedSearchUseWeb' -Value 0x00
 
 
-Write-Host -ForegroundColor Green "Installing SoundBrightness re-map..." 
-Get-Process | ? {$_ -match "SoundBrightness"} | kill
-copy ".\WindowsTweaks\AutoHotKey\SoundBrightness.exe" "$env:AppData\Microsoft\Windows\Start Menu\Programs\Startup\SoundBrightness.exe"
-& "$env:AppData\Microsoft\Windows\Start Menu\Programs\Startup\SoundBrightness.exe"
+#Write-Host -ForegroundColor Green "Installing NotificationCenterSanity..." 
+#Get-Process | ? {$_ -match "NotificationCenterSanity"} | kill
+#copy ".\WindowsTweaks\NotificationCenterSanity.exe" "$env:AppData\Microsoft\Windows\Start Menu\Programs\Startup\NotificationCenterSanity.exe"
+#& "$env:AppData\Microsoft\Windows\Start Menu\Programs\Startup\NotificationCenterSanity.exe"
+
+
+#Write-Host -ForegroundColor Green "Installing SoundBrightness re-map..." 
+#Get-Process | ? {$_ -match "SoundBrightness"} | kill
+#copy ".\WindowsTweaks\AutoHotKey\SoundBrightness.exe" "$env:AppData\Microsoft\Windows\Start Menu\Programs\Startup\SoundBrightness.exe"
+#& "$env:AppData\Microsoft\Windows\Start Menu\Programs\Startup\SoundBrightness.exe"
 
 
 Write-Host -ForegroundColor Green "Installing Hyper-V and TelnetClient... (if you're asked to reboot, don't do it!)" 
@@ -310,11 +310,42 @@ $null = & $ps64 Enable-WindowsOptionalFeature -NoRestart -Online -FeatureName Mi
 
 Write-Host -ForegroundColor Green "Disabling the stupid WindowsError Reporting prompt..."
 $null = Disable-WindowsErrorReporting
+$null = Declare-RegKey -Path 'HKLM:\SOFTWARE\Microsoft\PCHealth\ErrorReporting' -Name 'DoReport' -Value 0x00
+$null = Declare-RegKey -Path 'HKLM:\SOFTWARE\Microsoft\PCHealth\ErrorReporting' -Name 'ShowUI' -Value 0x00
+$null = Declare-RegKey -Path 'HKCU:\SOFTWARE\Microsoft\Windows\Windows Error Reporting' -Name 'DontShowUI' -Value 0x01
+$null = Declare-RegKey -Path 'HKCU:\SOFTWARE\Microsoft\Windows\Windows Error Reporting' -Name 'Disabled' -Value 0x01
+$null = Declare-RegKey -Path 'HKLM:\SOFTWARE\Microsoft\Windows\Windows Error Reporting' -Name 'DontShowUI' -Value 0x01
+$null = Declare-RegKey -Path 'HKLM:\SOFTWARE\Microsoft\Windows\Windows Error Reporting' -Name 'Disabled' -Value 0x01
 
 Write-Host -ForegroundColor Green "Disabling Adaptive Brightness..."
 Stop-Service SensrSvc
 Set-Service SensrSvc -StartupType Disabled
 #http://supportishere.com/two-scripts-to-disabled-adaptive-display-brightness-ambient-light-sensor-in-windows-78/
+
+Write-Host -ForegroundColor Green "Removing annoying apps..."
+Get-AppxPackage Microsoft.Office.Sway | Remove-AppxPackage
+Get-AppxPackage TheNewYorkTimes.NYTCrossword | Remove-AppxPackage
+Get-AppxPackage king.com.CandyCrushSodaSaga | Remove-AppxPackage
+Get-AppxPackage Microsoft.WindowsPhone | Remove-AppxPackage
+Get-AppxPackage Flipboard.Flipboard | Remove-AppxPackage
+Get-AppxPackage Microsoft.MicrosoftOfficeHub | Remove-AppxPackage
+Get-AppxPackage Microsoft.ConnectivityStore | Remove-AppxPackage
+Get-AppxPackage Microsoft.BingFinance | Remove-AppxPackage
+Get-AppxPackage Microsoft.BingNews | Remove-AppxPackage
+Get-AppxPackage Microsoft.BingSports | Remove-AppxPackage
+Get-AppxPackage Drawboard.DrawboardPDF | Remove-AppxPackage
+Get-AppxPackage Microsoft.3DBuilder | Remove-AppxPackage
+Get-AppxPackage Microsoft.Getstarted | Remove-AppxPackage
+Get-AppxPackage XeroxCorp.PrintExperience | Remove-AppxPackage
+Get-AppxPackage Microsoft.SkypeApp | Remove-AppxPackage
+Get-AppxPackage Microsoft.FreshPaint | Remove-AppxPackage
+Get-AppxPackage Microsoft.OneConnect | Remove-AppxPackage
+Get-AppxPackage Microsoft.MicrosoftSolitaireCollection | Remove-AppxPackage
+Get-AppxPackage GAMELOFTSA.Asphalt8Airborne | Remove-AppxPackage
+Get-AppxPackage D52A8D61.FarmVille2CountryEscape | Remove-AppxPackage
+
+
+
 
 
 
@@ -344,6 +375,7 @@ scoop install conemu
 #choco install f.lux
 
 Write-Host -ForegroundColor Green "Done! Your computer is now awesome." 
+Write-Host -ForegroundColor Green "You should definitely restart now!" 
 Write-Host -ForegroundColor Green "You should definitely restart now!" 
 Write-Host -ForegroundColor Green "You should definitely restart now!" 
 
