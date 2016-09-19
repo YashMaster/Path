@@ -1,7 +1,7 @@
 #This is designed to help you setup a new PC
 #This assumes you are Yashar and you prefer the best settings on your PC
 #All else, don't use this script, or be sad
-#
+
 #TODO:
 #	#Set sleep to never if desktop
 #	#Copy shortcuts to desktop
@@ -12,17 +12,19 @@
 #	#update help
 #	#add "explore" as alias for "explorer ."
 #	#Import conemu settings
-#	#Configure good File Explorer "Quick-Access" links
 #	#Right-click "Open powershell here"
 #	#Always show Right-click "Get path" 
 #	#add file associations
 #	#Powershell: enable quickedit mode
 #	#Powershell: filter paste
 #	#Powershell: enable line wrapping
+#	#Explorer: show "details" view by default
+#	#Explorer: remove the "network" and "quickaccess" buttons 
 #
-#   #Grant user permission for RDP acccess
-#   #Three finger tap == notificationcenter 
-#
+#	Differentiate between desktop and laptop
+#	* 	Configure power profiles accordingly
+#	* 	Configure power profiles accordingly
+
 
 #Get rid of these messages...
 # "Outlook is not responding"
@@ -255,16 +257,14 @@ Write-Host -ForegroundColor Green "Configuring Windows Explorer and Shell..."
 $null = Declare-RegKey -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced' -Name 'Hidden' -Value 0x01
 $null = Declare-RegKey -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced' -Name 'HideFileExt' -Value 0x00
 $null = Declare-RegKey -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced' -Name 'SnapAssist' -Value 0x00
-# Change Explorer home screen back to "This PC"
+# Change Explorer home screen to "This PC" (set to 0x02 to set it back to "Quick-Access")
 $null = Declare-RegKey -Path 'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\Advanced' -Name 'LaunchTo' -Value 0x01
-# Change it back to "Quick Access" (Windows 10 default)
-#$null = Declare-RegKey -Path 'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\Advanced' -Name 'LaunchTo' -Value -0x02
 $null = Declare-RegKey -Path 'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer' -Name 'ShowRecent' -Value 0x00
 $null = Declare-RegKey -Path 'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer' -Name 'ShowFrequent' -Value 0x00
 $null = Declare-RegKey -Path 'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\Advanced' -Name 'DontPrettyPath' -Value 0x01
 
 
-Write-Host -ForegroundColor Green "Disabling SmartScreen... Disable sending Store app URLs to SmartScreen"
+Write-Host -ForegroundColor Green "Disabling SmartScreen... Disable sending Store app URLs to SmartScreen..."
 $null = Declare-RegKey -Path 'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\AppHost' -Name 'EnableWebContentEvaluation' -Value 0x00
 $null = Declare-RegKey -Path 'HKLM:\Software\Microsoft\Windows\CurrentVersion\Explorer' -Name 'SmartScreenEnabled' -Value 'Off'
 
@@ -272,6 +272,14 @@ $null = Declare-RegKey -Path 'HKLM:\Software\Microsoft\Windows\CurrentVersion\Ex
 Write-Host -ForegroundColor Green "Enabling Developer Mode..."
 #$null = Declare-RegKey -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\AppModelUnlock' -Name 'AllowAllTrustedApps' -Value 0x01
 $null = Declare-RegKey -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\AppModelUnlock' -Name 'AllowDevelopmentWithoutDevLicense' -Value 0x01
+
+
+Write-Host -ForegroundColor Green "Setting up Touchpad settings..."
+$null = Declare-RegKey -Path 'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\PrecisionTouchPad' -Name 'RightClickZoneEnabled' -Value 0x00
+$null = Declare-RegKey -Path 'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\PrecisionTouchPad' -Name 'ThreeFingerTapEnabled' -Value 0x02
+$null = Declare-RegKey -Path 'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\PrecisionTouchPad' -Name 'ThreeFingerSlideEnabled' -Value 0x01
+$null = Declare-RegKey -Path 'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\PrecisionTouchPad' -Name 'FourFingerTapEnabled' -Value 0x02
+$null = Declare-RegKey -Path 'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\PrecisionTouchPad' -Name 'FourFingerSlideEnabled' -Value 0x02
 
 
 
@@ -317,10 +325,37 @@ $null = Declare-RegKey -Path 'HKCU:\SOFTWARE\Microsoft\Windows\Windows Error Rep
 $null = Declare-RegKey -Path 'HKLM:\SOFTWARE\Microsoft\Windows\Windows Error Reporting' -Name 'DontShowUI' -Value 0x01
 $null = Declare-RegKey -Path 'HKLM:\SOFTWARE\Microsoft\Windows\Windows Error Reporting' -Name 'Disabled' -Value 0x01
 
+
+#Existing Power Schemes (* Active) 
+#----------------------------------- 
+#Power Scheme GUID: 1ca6081e-7f76-46f8-b8e5-92a6bd9800cd  (Maximum Battery 
+#Power Scheme GUID: 2ae0e187-676e-4db0-a121-3b7ddeb3c420  (Power Source Opt 
+#Power Scheme GUID: 37aa8291-02f6-4f6c-a377-6047bba97761  (Timers off (Pres 
+#Power Scheme GUID: 381b4222-f694-41f0-9685-ff5bb260df2e  (Balanced) 
+#Power Scheme GUID: 8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c  (High performance 
+#Power Scheme GUID: a1841308-3541-4fab-bc81-f71556f20b4a  (Power saver) 
+#Power Scheme GUID: a666c91e-9613-4d84-a48e-2e4b7a016431  (Maximum Performa 
+#Power Scheme GUID: de7ef2ae-119c-458b-a5a3-997c2221e76e  (Energy Star) 
+#Power Scheme GUID: e11a5899-9d8e-4ded-8740-628976fc3e63  (Video Playback) 
+#PowerCfg -SetActive $x 
 Write-Host -ForegroundColor Green "Disabling Adaptive Brightness..."
+#http://supportishere.com/two-scripts-to-disabled-adaptive-display-brightness-ambient-light-sensor-in-windows-78/
 Stop-Service SensrSvc
 Set-Service SensrSvc -StartupType Disabled
-#http://supportishere.com/two-scripts-to-disabled-adaptive-display-brightness-ambient-light-sensor-in-windows-78/
+$currentScheme = ((PowerCfg -GetActiveScheme).Split())[3]
+PowerCfg -SetACValueIndex $currentScheme 7516b95f-f776-4464-8c53-06167f40cc99 fbd9aa66-9553-4097-ba44-ed6e9d65eab8 000
+PowerCfg -SetDCValueIndex $currentScheme 7516b95f-f776-4464-8c53-06167f40cc99 fbd9aa66-9553-4097-ba44-ed6e9d65eab8 000
+
+Write-Host -ForegroundColor Green "Setting other power settings..."
+powercfg -change -monitor-timeout-ac 0
+powercfg -change -standby-timeout-ac 0
+powercfg -change -disk-timeout-ac 0
+powercfg -change -hibernate-timeout-ac 0
+
+powercfg -change -monitor-timeout-dc 0
+powercfg -change -standby-timeout-dc 0
+powercfg -change -disk-timeout-dc 0
+powercfg -change -hibernate-timeout-dc 0
 
 Write-Host -ForegroundColor Green "Removing annoying apps..."
 Get-AppxPackage Microsoft.Office.Sway | Remove-AppxPackage
