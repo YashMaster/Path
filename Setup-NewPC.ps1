@@ -105,6 +105,26 @@ Function Add-Path
 
 Function Get-Path() { return $env:Path }
 
+
+Function Declare-RegPath
+{
+	[CmdletBinding()]
+	Param
+	( 
+		[Parameter(Mandatory=$true, ValueFromPipeline=$true)]
+		[String]$Path
+	)
+	if(Test-Path $Path)
+		{ return }
+
+	$parentPath = Split-Path $Path -Parent
+	if(-not (Test-Path $parentPath))
+		{ Declare-RegPath $parentPath }
+
+	New-Item -Path $Path
+}
+
+
 #Declare that a regkey must exist #Examples
 #Declare-RegKey "HKCU:\Control Panel\Desktopz" "DelayLockIntervalz234" String
 #Declare-RegKey -Path 'HKCU:\Control Panel\Desktopz' -Name "DelayLockIntervalz23" -Value "string"
@@ -124,8 +144,9 @@ Function Declare-RegKey
 		[String]$PropertyType = ""
 	)
 
-	if(-not (Test-Path $Path))
-		{New-Item -Path $Path}
+	#if(-not (Test-Path $Path))
+	#	{New-Item -Path $Path}
+	Declare-RegPath $Path
 	
 	if($PropertyType -ne "")
 		{New-ItemProperty -Force -Path $Path -Name $Name -PropertyType $PropertyType -Value $Value}
@@ -220,7 +241,8 @@ Open-IETabs `
 	"http://osg/sites/jumpstart/_layouts/15/start.aspx#/SitePages/Home.aspx", `
 	"https://desktop.github.com/",`
 	"http://ejie.me/",`
-	"http://shop.gopro.com/softwareandapp/gopro-studio/GoPro-Studio.html")
+	"http://shop.gopro.com/softwareandapp/gopro-studio/GoPro-Studio.html",`
+	"https://support.microsoft.com/en-us/help/12379/windows-10-mobile-device-recovery-tool-faq")
 
 	
 Write-Host -ForegroundColor Green "Enabling future PowerShell scripts..." 
