@@ -1,4 +1,6 @@
+#Downloads and extracts a given repo from GitHub.com
 #Adapted from: https://gallery.technet.microsoft.com/scriptcenter/a-GitHub-Repository-265c0b49
+
 param( 
    [Parameter(Mandatory=$True)] 
    [string] $Author, 
@@ -25,7 +27,7 @@ $RepositoryZipUrl = "https://api.github.com/repos/$Author/$Name/zipball/$Branch"
 if(Test-Path $ZipFile) 
 	{Remove-Item -Path $ZipFile -Force -Recurse}
 
-# download the zip 
+#Download the zip 
 Invoke-RestMethod -Uri $RepositoryZipUrl -OutFile $ZipFile 
 
 #Extract the zip

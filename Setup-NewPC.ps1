@@ -3,27 +3,24 @@
 #All else, don't use this script, or be sad
 
 #TODO:
-#	#Set sleep to never if desktop
 #	#Copy shortcuts to desktop
 #	#Add %OneDrive% env var 
-#	#Add PS configurations
-#	#Add PowerSHell Profile
 #	#Import notepad++ settings 
-#	#update help
-#	#add "explore" as alias for "explorer ."
 #	#Import conemu settings
-#	#Right-click "Open powershell here"
-#	#Always show Right-click "Get path" 
 #	#add file associations
-#	#Powershell: enable quickedit mode
-#	#Powershell: filter paste
-#	#Powershell: enable line wrapping
-#	#Explorer: show "details" view by default
-#	#Explorer: remove the "network" and "quickaccess" buttons 
+#	#PowerShell: enable quickedit mode
+#	#PowerShell: filter paste
+#	#PowerShell: enable line wrapping
+#	#Explorer: Show "details" view by default
+#	#Explorer: Remove the "network" and "quickaccess" buttons 
+#	#Explorer: Right-click: Get Path
+#	#Explorer: Right-click: Duplicate
+#	#Explorer: Right-click: Open PowerShell Here
 #
 #	Differentiate between desktop and laptop
 #	* 	Configure power profiles accordingly
-#	* 	Configure power profiles accordingly
+#	*	Set sleep to never if desktop
+
 
 
 #Get rid of these messages...
@@ -42,6 +39,7 @@ Param
 
 $workingdir = Split-Path $MyInvocation.MyCommand.Path -Parent
 . "$workingdir\Font.ps1"  
+. "$workingdir\Microsoft.PowerShell_profile.ps1"
 
 #Checks if the current script is being run elevated 
 Function Is-RunningElevated()
@@ -105,56 +103,6 @@ Function Add-Path
 
 Function Get-Path() { return $env:Path }
 
-
-Function Declare-RegPath
-{
-	[CmdletBinding()]
-	Param
-	( 
-		[Parameter(Mandatory=$true, ValueFromPipeline=$true)]
-		[String]$Path
-	)
-	if(Test-Path $Path)
-		{ return }
-
-	$parentPath = Split-Path $Path -Parent
-	if(-not (Test-Path $parentPath))
-		{ Declare-RegPath $parentPath }
-
-	New-Item -Path $Path
-}
-
-
-#Declare that a regkey must exist #Examples
-#Declare-RegKey "HKCU:\Control Panel\Desktopz" "DelayLockIntervalz234" String
-#Declare-RegKey -Path 'HKCU:\Control Panel\Desktopz' -Name "DelayLockIntervalz23" -Value "string"
-#Declare-RegKey -Path 'HKCU:\Control Panel\Desktopz' -Name "DelayLockIntervalz2" -Value 0x00000324
-#Declare-RegKey -Path 'HKCU:\Control Panel\Desktopz' -Name "DelayLockIntervalz" -Value 0x00000324 -PropertyType String 
-Function Declare-RegKey
-{	
-	[CmdletBinding()]
-	Param
-	( 
-		[Parameter(Mandatory=$true, ValueFromPipeline=$true)]
-		[String]$Path,
-		[Parameter(Mandatory=$true, ValueFromPipeline=$true)]
-		[String]$Name,
-		[Parameter(Mandatory=$true, ValueFromPipeline=$true)]
-		$Value,
-		[String]$PropertyType = ""
-	)
-
-	#if(-not (Test-Path $Path))
-	#	{New-Item -Path $Path}
-	Declare-RegPath $Path
-	
-	if($PropertyType -ne "")
-		{New-ItemProperty -Force -Path $Path -Name $Name -PropertyType $PropertyType -Value $Value}
-	else 
-		{New-ItemProperty -Force -Path $Path -Name $Name -Value $Value}
-}
-
-
 #Gets path to the 64 bit version of PowerShell
 #For more details see: http://karlprosser.com/coder/2011/11/04/calling-powershell-64bit-from-32bit-and-visa-versa/
 Function Get-Ps64($emptyIfAlready64=$false)
@@ -213,7 +161,9 @@ cd $Apps
 Write-Host -ForegroundColor Green "Adding to %PATH%: $Path" 
 $null = Add-Path $Path
 
-	
+Write-Host -ForegroundColor Green "Copying over PowerShell profile..." 
+$null = Declare-Copy "$workingdir\Microsoft.PowerShell_profile.ps1" $profile
+
 Write-Host -ForegroundColor Green "Installing fonts..." 
 $allFonts = "$Fonts\*.ttf"
 Get-ChildItem $allFonts | ForEach-Object { Install-Font $_.FullName $_} 
@@ -401,9 +351,8 @@ Get-AppxPackage Microsoft.MicrosoftSolitaireCollection | Remove-AppxPackage
 Get-AppxPackage GAMELOFTSA.Asphalt8Airborne | Remove-AppxPackage
 Get-AppxPackage D52A8D61.FarmVille2CountryEscape | Remove-AppxPackage
 
-
-
-
+Write-Host -ForegroundColor Green  "Updating help..."
+Update-Help
 
 
 Write-Host -ForegroundColor Green  "Installing scoop..."
@@ -426,10 +375,9 @@ scoop install conemu
 #Install-Package ConEmu -Force
 #install-package -provider chocolatey -force cmder
 
-
-
 #Install flux
 #choco install f.lux
+
 
 Write-Host -ForegroundColor Green "Done! Your computer is now awesome." 
 Write-Host -ForegroundColor Green "You should definitely restart now!" 
