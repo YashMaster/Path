@@ -4,7 +4,6 @@
 
 #TODO:
 #	#Copy shortcuts to desktop
-#	#Add %OneDrive% env var 
 #	#Import notepad++ settings 
 #	#Import conemu settings
 #	#add file associations
@@ -192,6 +191,7 @@ Open-IETabs `
 	"https://desktop.github.com/",`
 	"http://ejie.me/",`
 	"http://shop.gopro.com/softwareandapp/gopro-studio/GoPro-Studio.html",`
+	"https://www.microsoft.com/accessories/en-us/downloads/mouse-keyboard-center",`
 	"https://support.microsoft.com/en-us/help/12379/windows-10-mobile-device-recovery-tool-faq")
 
 	
@@ -239,6 +239,14 @@ $null = Declare-RegKey -Path 'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Ex
 Write-Host -ForegroundColor Green "Disabling SmartScreen... Disable sending Store app URLs to SmartScreen..."
 $null = Declare-RegKey -Path 'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\AppHost' -Name 'EnableWebContentEvaluation' -Value 0x00
 $null = Declare-RegKey -Path 'HKLM:\Software\Microsoft\Windows\CurrentVersion\Explorer' -Name 'SmartScreenEnabled' -Value 'Off'
+
+
+#http://www.tenforums.com/tutorials/5918-windows-defender-turn-off-windows-10-a.html#option2
+Write-Host -ForegroundColor Green "Disabling Windows Defender and Antimalware Service..."
+$null = Declare-RegKey -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows Defender' -Name 'DisableAntiSpyware' -Value 1
+$null = Declare-RegKey -Path 'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run' -Name 'Windows Defender' -Value "-"
+$null = Declare-RegKey -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run' -Name 'Windows Defender' -Value "-"
+$null = Declare-RegKey -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run' -Name 'Windows Defender' -Value "-"
 
 
 Write-Host -ForegroundColor Green "Enabling Developer Mode..."
